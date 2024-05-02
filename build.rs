@@ -1,33 +1,24 @@
-use std::env;
-use std::path::PathBuf;
-
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
-    pkg_config::Config::new()
-        .atleast_version("3.0.12")
-        .probe("modsecurity")
-        .unwrap();
-
-    println!("cargo:rustc-link-lib=modsecurity");
-    generate_bindings();
+    match try_system_modsecurity() {
+        Ok(library) => {
+            eprintln!("libmodsecurity found on the system:");
+            eprintln!("  Name: {:?}", library.libs);
+            eprintln!("  Path: {:?}", library.link_paths);
+            eprintln!("  Version: {}", library.version);
+        }
+        Err(e) => {
+            eprintln!("libmodsecurity cannot be found on the system: {e}");
+            eprintln!("Vendoring is not supported at this time.");
+            std::process::exit(1);
+        }
+    }
 }
 
-fn generate_bindings() {
-    let bindings = bindgen::Builder::default()
-        .header("wrapper.h")
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-        .allowlist_function("msc.*")
-        .allowlist_type("ModSec.*")
-        .allowlist_type("Transaction_t")
-        .allowlist_type("Rules_t")
-        .generate()
-        .expect("Unable to generate bindings");
-
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
+/// Tries to use system libmodsecurity. If it is found, it emits the necessary
+/// linking directives.
+fn try_system_modsecurity() -> Result<pkg_config::Library, pkg_config::Error> {
+    let mut cfg = pkg_config::Config::new();
+    cfg.range_version("3.0.0".."3.0.12").probe("modsecurity")
 }
