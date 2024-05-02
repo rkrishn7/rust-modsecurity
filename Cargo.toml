@@ -6,7 +6,7 @@ repository = "https://github.com/rkrishn7/modsecurity-sys"
 keywords = ["modsecurity", "security", "waf"]
 edition = "2021"
 
-include = ["LICENSE*", "/README.md", "build.rs", "src/*.rs", "src/*.c"]
+include = ["LICENSE*", "/README.md", "build.rs", "src/*.rs", "wrapper.h"]
 
 [build-dependencies]
 bindgen = "0.69.4"
