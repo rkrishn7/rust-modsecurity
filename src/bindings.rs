@@ -173,3 +173,41 @@ extern "C" {
 extern "C" {
     pub fn msc_cleanup(msc: *mut ModSecurity);
 }
+extern "C" {
+    pub fn msc_create_rules_set() -> *mut RulesSet;
+}
+extern "C" {
+    pub fn msc_rules_dump(rules: *mut RulesSet);
+}
+extern "C" {
+    pub fn msc_rules_merge(
+        rules_dst: *mut RulesSet,
+        rules_from: *mut RulesSet,
+        error: *mut *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn msc_rules_add_remote(
+        rules: *mut RulesSet,
+        key: *const ::std::os::raw::c_char,
+        uri: *const ::std::os::raw::c_char,
+        error: *mut *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn msc_rules_add_file(
+        rules: *mut RulesSet,
+        file: *const ::std::os::raw::c_char,
+        error: *mut *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn msc_rules_add(
+        rules: *mut RulesSet,
+        plain_rules: *const ::std::os::raw::c_char,
+        error: *mut *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+}
+extern "C" {
+    pub fn msc_rules_cleanup(rules: *mut RulesSet) -> ::std::os::raw::c_int;
+}
