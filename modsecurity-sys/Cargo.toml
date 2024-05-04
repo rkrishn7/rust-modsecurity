@@ -1,0 +1,19 @@
+[package]
+name = "modsecurity-sys"
+description = "Rust bindings for ModSecurity"
+license.workspace = true
+version = "0.1.1-alpha.1"
+authors = ["Rohan Krishnaswamy <rohan@fastmail.us>"]
+repository.workspace = true
+keywords = ["modsecurity", "security", "waf"]
+edition = "2021"
+rust-version.workspace = true
+
+include = ["../LICENSE", "/README.md", "build.rs", "src/*.rs", "wrapper.h"]
+
+[build-dependencies]
+pkg-config = "0.3.9"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

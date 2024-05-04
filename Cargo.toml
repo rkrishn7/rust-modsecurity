@@ -1,18 +1,20 @@
 [package]
-name = "modsecurity-sys"
-description = "Rust bindings for ModSecurity"
-license = "Apache-2.0"
-version = "0.1.1-alpha.1"
+name = "modsecurity"
+version = "0.1.0"
 authors = ["Rohan Krishnaswamy <rohan@fastmail.us>"]
-repository = "https://github.com/rkrishn7/modsecurity-sys"
+repository.workspace = true
+readme = "README.md"
+license.workspace = true
+description = "A high-level Rust interface to libmodsecurity"
 keywords = ["modsecurity", "security", "waf"]
 edition = "2021"
+rust-version.workspace = true
 
-include = ["LICENSE", "/README.md", "build.rs", "src/*.rs", "wrapper.h"]
 
-[build-dependencies]
-pkg-config = "0.3.9"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+package.repository = "https://github.com/rkrishn7/rust-modsecurity"
+package.license = "Apache-2.0"
+package.rust-version = "1.78.0"
 
 [dependencies]
+modsecurity-sys = { path = "modsecurity-sys", version = "0.1.1-alpha.1" }
