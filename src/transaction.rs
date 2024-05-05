@@ -4,7 +4,7 @@ use modsecurity_sys::{
     msc_new_transaction, msc_process_logging, Transaction as ModSecurityTransaction,
 };
 
-type LogCallback = Box<dyn Fn(&str) + Send + Sync + 'static>;
+type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
 
 pub struct Transaction<'a> {
     inner: *mut ModSecurityTransaction,

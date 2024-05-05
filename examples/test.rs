@@ -15,8 +15,11 @@ pub fn main() {
 
     println!("Rules added successfully");
 
-    let mut transaction: Transaction =
-        Transaction::new(&ms, &rules, Some(Box::new(|msg| println!("Log: {}", msg))));
+    let mut transaction: Transaction = Transaction::new(
+        &ms,
+        &rules,
+        Some(Box::new(|msg| println!("Log: {:?}", msg))),
+    );
     transaction
         .process_connection("127.0.0.1", 12345, "127.0.0.1", 8080)
         .expect("error processing connection");

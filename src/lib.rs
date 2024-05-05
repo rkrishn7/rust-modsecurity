@@ -48,10 +48,14 @@ impl ModSecurity {
             msg: *const ::std::os::raw::c_void,
         ) {
             let data = msg as *const std::os::raw::c_char;
-            let c_str = unsafe { CStr::from_ptr(data) };
-            let str_slice = c_str.to_str().unwrap();
+            let c_str = if data.is_null() {
+                None
+            } else {
+                Some(unsafe { CStr::from_ptr(data) })
+            };
+            let str_slice = c_str.map(|s| s.to_str().expect("Invalid UTF-8 string"));
             if !cb.is_null() {
-                let cb = unsafe { &*(cb as *const &dyn Fn(&str)) };
+                let cb = unsafe { &*(cb as *const &dyn Fn(Option<&str>)) };
                 cb(str_slice);
             }
         }
