@@ -6,7 +6,7 @@ pub fn main() {
     println!("ModSecurity version: {}", ms.whoami());
 
     let mut rules = Rules::new();
-    if let Err(e) = rules.add_file("/home/rohan/oss/modsecurity-sys/examples/basic_rules.conf") {
+    if let Err(e) = rules.add_file("examples/basic_rules.conf") {
         println!("Error adding rules file: {:?}", e);
         return;
     }
