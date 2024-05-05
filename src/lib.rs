@@ -55,8 +55,8 @@ impl ModSecurity {
             };
             let str_slice = c_str.map(|s| s.to_str().expect("Invalid UTF-8 string"));
             if !cb.is_null() {
-                let cb = unsafe { &*(cb as *const &dyn Fn(Option<&str>)) };
-                cb(str_slice);
+                let cb = cb as *const *const (dyn Fn(Option<&str>) + Send + Sync + 'static);
+                (**cb)(str_slice);
             }
         }
 

@@ -21,8 +21,18 @@ pub fn main() {
         Some(Box::new(|msg| println!("Log: {:?}", msg))),
     );
     transaction
-        .process_connection("127.0.0.1", 12345, "127.0.0.1", 8080)
+        .process_connection("127.0.0.2", 22, "127.0.0.3", 8080)
         .expect("error processing connection");
+    transaction
+        .process_request_body()
+        .expect("error processing request body");
+    transaction
+        .add_request_header("X-Client-Port", "22")
+        .expect("error adding request header");
+    transaction
+        .process_request_headers()
+        .expect("error processing request headers");
+    println!("intervention? {:?}", transaction.intervention());
     transaction
         .process_logging()
         .expect("error processing logging");
