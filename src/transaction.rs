@@ -10,7 +10,6 @@ type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
 
 pub struct Transaction<'a> {
     inner: *mut ModSecurityTransaction,
-    ms: &'a ModSecurity,
     rules: &'a Rules,
     log_cb: Option<Box<LogCallback>>,
 }
@@ -25,7 +24,10 @@ impl Drop for Transaction<'_> {
 
 impl<'a> Transaction<'a> {
     pub fn new(ms: &'a ModSecurity, rules: &'a Rules, log_cb: Option<LogCallback>) -> Self {
+        // NOTE: The double indirection is required here as `Box<dyn Trait>` is a fat pointer and
+        // we must be able to convert to it from `*mut c_void`
         let log_cb = log_cb.map(|cb| Box::new(cb));
+
         let log_cb_raw = log_cb
             .as_ref()
             .map(|cb| &**cb as *const _ as *mut std::os::raw::c_void)
@@ -33,11 +35,10 @@ impl<'a> Transaction<'a> {
 
         let msc_transaction = unsafe { msc_new_transaction(ms.inner(), rules.inner(), log_cb_raw) };
 
-        // SAFETY: We keep `log_cb` alive as long as the `Transaction` is alive so it's safe to
-        // invoke it in the callback.
+        // SAFETY: We need to keep `log_cb` alive as long as the `Transaction` is alive so it's safe to
+        // invoke in the callback
         Self {
             inner: msc_transaction,
-            ms,
             rules,
             log_cb,
         }
