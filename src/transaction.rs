@@ -244,7 +244,7 @@ impl Intervention {
     }
 
     pub fn log(&self) -> Option<&str> {
-        if self.inner.url.is_null() {
+        if self.inner.log.is_null() {
             return None;
         }
 
