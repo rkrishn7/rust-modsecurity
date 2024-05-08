@@ -1,4 +1,5 @@
 #[derive(Clone, PartialEq, Eq, Debug)]
+/// Primary error type for ModSecurity
 pub enum ModSecurityError {
     /// Error when converting a string to a C string
     Nul(std::ffi::NulError),

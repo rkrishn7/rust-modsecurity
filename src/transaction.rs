@@ -3,10 +3,46 @@ use std::marker::PhantomData;
 use crate::{ModSecurity, ModSecurityResult, Rules};
 
 use modsecurity_sys::{
-    msc_add_request_header, msc_intervention, msc_new_transaction, msc_process_logging,
-    msc_process_request_body, msc_process_request_headers, msc_update_status_code,
-    ModSecurityIntervention, Transaction as ModSecurityTransaction,
+    msc_add_request_header, msc_intervention, msc_new_transaction, msc_new_transaction_with_id,
+    msc_process_logging, msc_process_request_body, msc_process_request_headers,
+    msc_update_status_code, ModSecurityIntervention, Transaction as ModSecurityTransaction,
 };
+
+pub struct TransactionBuilder<'a> {
+    ms: &'a ModSecurity,
+    rules: &'a Rules,
+    log_cb: Option<LogCallback>,
+    id: Option<&'a str>,
+}
+
+impl<'a> TransactionBuilder<'a> {
+    pub(crate) fn new(ms: &'a ModSecurity, rules: &'a Rules) -> Self {
+        Self {
+            ms,
+            rules,
+            log_cb: None,
+            id: None,
+        }
+    }
+
+    pub fn with_logging<F>(mut self, log_cb: F) -> Self
+    where
+        F: Fn(Option<&str>) + Send + Sync + 'static,
+    {
+        self.log_cb = Some(Box::new(log_cb));
+        self
+    }
+
+    pub fn with_id(mut self, id: &'a str) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn build(self) -> ModSecurityResult<Transaction<'a>> {
+        let transaction = Transaction::new(self.ms, self.rules, self.id, self.log_cb);
+        transaction
+    }
+}
 
 type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
 
@@ -19,18 +55,28 @@ pub struct Transaction<'a> {
     /// instance. Along with the lifetime constraints on this struct, this ensures that the callback
     /// can be safely invoked.
     _log_cb: Option<Box<LogCallback>>,
+    /// Optional explicit transaction ID
+    _id: Option<*mut std::os::raw::c_char>,
 }
 
 impl Drop for Transaction<'_> {
     fn drop(&mut self) {
         unsafe {
             modsecurity_sys::msc_transaction_cleanup(self.inner);
+            if let Some(id) = self._id {
+                let _ = std::ffi::CString::from_raw(id);
+            }
         }
     }
 }
 
 impl<'a> Transaction<'a> {
-    pub fn new(ms: &'a ModSecurity, rules: &'a Rules, log_cb: Option<LogCallback>) -> Self {
+    pub(crate) fn new(
+        ms: &'a ModSecurity,
+        rules: &'a Rules,
+        id: Option<&str>,
+        log_cb: Option<LogCallback>,
+    ) -> ModSecurityResult<Self> {
         // NOTE: The double indirection is required here as `Box<dyn Trait>` is a fat pointer and
         // we must be able to convert to it from `*mut c_void`
         let log_cb = log_cb.map(|cb| Box::new(cb));
@@ -40,15 +86,29 @@ impl<'a> Transaction<'a> {
             .map(|cb| &**cb as *const _ as *mut std::os::raw::c_void)
             .unwrap_or(std::ptr::null_mut());
 
-        let msc_transaction = unsafe { msc_new_transaction(ms.inner(), rules.inner(), log_cb_raw) };
+        let (maybe_id, msc_transaction) = unsafe {
+            if let Some(id) = id {
+                let id = std::ffi::CString::new(id)?.into_raw();
+                (
+                    Some(id),
+                    msc_new_transaction_with_id(ms.inner(), rules.inner(), id, log_cb_raw),
+                )
+            } else {
+                (
+                    None,
+                    msc_new_transaction(ms.inner(), rules.inner(), log_cb_raw),
+                )
+            }
+        };
 
         // SAFETY: We need to keep `log_cb` alive as long as the `Transaction` is alive so it's safe to
         // invoke in the callback
-        Self {
+        Ok(Self {
             inner: msc_transaction,
             _log_cb: log_cb,
             _phantom: PhantomData,
-        }
+            _id: maybe_id,
+        })
     }
 
     pub fn process_logging(&mut self) -> ModSecurityResult<()> {

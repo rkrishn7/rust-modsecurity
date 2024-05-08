@@ -9,6 +9,7 @@ mod transaction;
 pub use error::ModSecurityError;
 pub use rules::Rules;
 pub use transaction::Transaction;
+use transaction::TransactionBuilder;
 
 pub type ModSecurityResult<T> = Result<T, ModSecurityError>;
 
@@ -21,6 +22,10 @@ impl ModSecurity {
         Self {
             inner: unsafe { msc_init() },
         }
+    }
+
+    pub fn transaction_builder<'a>(&'a self, rules: &'a Rules) -> TransactionBuilder<'a> {
+        TransactionBuilder::new(self, rules)
     }
 
     pub fn whoami(&self) -> String {

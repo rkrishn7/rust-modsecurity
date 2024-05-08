@@ -1,4 +1,4 @@
-use modsecurity::{ModSecurity, Rules, Transaction};
+use modsecurity::{ModSecurity, Rules};
 
 pub fn main() {
     let mut ms = ModSecurity::new();
@@ -15,11 +15,11 @@ pub fn main() {
 
     println!("Rules added successfully");
 
-    let mut transaction: Transaction = Transaction::new(
-        &ms,
-        &rules,
-        Some(Box::new(|msg| println!("Log: {:?}", msg))),
-    );
+    let mut transaction = ms
+        .transaction_builder(&rules)
+        .with_logging(|msg| println!("Log: {:?}", msg))
+        .build()
+        .expect("error building transaction");
 
     transaction
         .process_connection("127.0.0.2", 22, "127.0.0.3", 8080)
