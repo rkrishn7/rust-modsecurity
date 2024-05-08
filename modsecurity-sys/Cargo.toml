@@ -7,7 +7,6 @@ authors = ["Rohan Krishnaswamy <rohan@fastmail.us>"]
 repository.workspace = true
 keywords = ["modsecurity", "security", "waf"]
 edition = "2021"
-rust-version.workspace = true
 
 include = ["../LICENSE", "/README.md", "build.rs", "src/*.rs", "wrapper.h"]
 

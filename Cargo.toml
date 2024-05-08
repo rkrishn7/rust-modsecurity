@@ -8,13 +8,10 @@ license.workspace = true
 description = "A high-level Rust interface to libmodsecurity"
 keywords = ["modsecurity", "security", "waf"]
 edition = "2021"
-rust-version.workspace = true
-
 
 [workspace]
 package.repository = "https://github.com/rkrishn7/rust-modsecurity"
 package.license = "Apache-2.0"
-package.rust-version = "1.78.0"
 
 [dependencies]
 modsecurity-sys = { path = "modsecurity-sys", version = "0.1.1-alpha.2" }
