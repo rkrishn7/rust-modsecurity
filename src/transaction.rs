@@ -1,6 +1,11 @@
-use std::marker::PhantomData;
+use std::{
+    ffi::{CStr, CString},
+    fmt::Debug,
+    marker::PhantomData,
+    os::raw::{c_char, c_uchar, c_void},
+};
 
-use crate::{ModSecurity, ModSecurityResult, Rules};
+use crate::{ModSecurity, ModSecurityError, ModSecurityResult, Rules};
 
 use modsecurity_sys::{
     msc_add_request_header, msc_intervention, msc_new_transaction, msc_new_transaction_with_id,
@@ -56,7 +61,7 @@ pub struct Transaction<'a> {
     /// can be safely invoked.
     _log_cb: Option<Box<LogCallback>>,
     /// Optional explicit transaction ID
-    _id: Option<*mut std::os::raw::c_char>,
+    _id: Option<*mut c_char>,
 }
 
 impl Drop for Transaction<'_> {
@@ -64,10 +69,20 @@ impl Drop for Transaction<'_> {
         unsafe {
             modsecurity_sys::msc_transaction_cleanup(self.inner);
             if let Some(id) = self._id {
-                let _ = std::ffi::CString::from_raw(id);
+                let _ = CString::from_raw(id);
             }
         }
     }
+}
+
+macro_rules! msc_result {
+    ($result:expr, $err:expr, $ok:expr) => {
+        if $result < 0 {
+            return Err($err);
+        } else {
+            Ok($ok)
+        }
+    };
 }
 
 impl<'a> Transaction<'a> {
@@ -83,12 +98,12 @@ impl<'a> Transaction<'a> {
 
         let log_cb_raw = log_cb
             .as_ref()
-            .map(|cb| &**cb as *const _ as *mut std::os::raw::c_void)
+            .map(|cb| &**cb as *const _ as *mut c_void)
             .unwrap_or(std::ptr::null_mut());
 
         let (maybe_id, msc_transaction) = unsafe {
             if let Some(id) = id {
-                let id = std::ffi::CString::new(id)?.into_raw();
+                let id = CString::new(id)?.into_raw();
                 (
                     Some(id),
                     msc_new_transaction_with_id(ms.inner(), rules.inner(), id, log_cb_raw),
@@ -114,11 +129,7 @@ impl<'a> Transaction<'a> {
     pub fn process_logging(&mut self) -> ModSecurityResult<()> {
         let result = unsafe { msc_process_logging(self.inner) };
 
-        if result < 0 {
-            Err(crate::ModSecurityError::ProcessLogging)
-        } else {
-            Ok(())
-        }
+        msc_result!(result, ModSecurityError::ProcessLogging, ())
     }
 
     pub fn process_connection(
@@ -128,8 +139,8 @@ impl<'a> Transaction<'a> {
         server: &str,
         s_port: i32,
     ) -> ModSecurityResult<()> {
-        let client = std::ffi::CString::new(client)?;
-        let server = std::ffi::CString::new(server)?;
+        let client = CString::new(client)?;
+        let server = CString::new(server)?;
 
         let result = unsafe {
             modsecurity_sys::msc_process_connection(
@@ -141,64 +152,51 @@ impl<'a> Transaction<'a> {
             )
         };
 
-        if result < 0 {
-            Err(crate::ModSecurityError::ProcessConnection)
-        } else {
-            Ok(())
-        }
+        msc_result!(result, ModSecurityError::ProcessConnection, ())
     }
 
     pub fn process_request_body(&mut self) -> ModSecurityResult<()> {
         let result = unsafe { msc_process_request_body(self.inner) };
 
-        if result < 0 {
-            Err(crate::ModSecurityError::ProcessRequestBody)
-        } else {
-            Ok(())
-        }
+        msc_result!(result, ModSecurityError::ProcessRequestBody, ())
     }
 
     pub fn process_request_headers(&mut self) -> ModSecurityResult<()> {
         let result = unsafe { msc_process_request_headers(self.inner) };
 
-        if result < 0 {
-            Err(crate::ModSecurityError::ProcessRequestHeaders)
-        } else {
-            Ok(())
-        }
+        msc_result!(result, ModSecurityError::ProcessRequestHeaders, ())
     }
 
     pub fn add_request_header(&mut self, key: &str, value: &str) -> ModSecurityResult<()> {
-        let key = std::ffi::CString::new(key)?;
-        let value = std::ffi::CString::new(value)?;
+        let key = CString::new(key)?;
+        let value = CString::new(value)?;
 
         let result = unsafe {
             msc_add_request_header(
                 self.inner,
-                key.as_ptr() as *const std::os::raw::c_uchar,
-                value.as_ptr() as *const std::os::raw::c_uchar,
+                key.as_ptr() as *const c_uchar,
+                value.as_ptr() as *const c_uchar,
             )
         };
 
-        if result < 0 {
-            Err(crate::ModSecurityError::AddRequestHeader)
-        } else {
-            Ok(())
-        }
+        msc_result!(result, ModSecurityError::AddRequestHeader, ())
     }
 
     pub fn intervention(&mut self) -> Option<Intervention> {
         let mut intervention = ModSecurityIntervention {
             status: 200,
             pause: 0,
-            url: std::ptr::null_mut() as *mut std::os::raw::c_char,
-            log: std::ptr::null_mut() as *mut std::os::raw::c_char,
+            url: std::ptr::null_mut() as *mut c_char,
+            log: std::ptr::null_mut() as *mut c_char,
             disruptive: 0,
         };
+
         let result = unsafe { msc_intervention(self.inner, &mut intervention) };
 
         if result > 0 {
-            Some(Intervention::from(intervention))
+            Some(Intervention {
+                inner: intervention,
+            })
         } else {
             None
         }
@@ -207,49 +205,67 @@ impl<'a> Transaction<'a> {
     pub fn update_status_code(&mut self, status: i32) -> ModSecurityResult<()> {
         let result = unsafe { msc_update_status_code(self.inner, status) };
 
-        if result < 0 {
-            Err(crate::ModSecurityError::UpdateStatusCode)
-        } else {
-            Ok(())
-        }
+        msc_result!(result, ModSecurityError::UpdateStatusCode, ())
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Intervention {
-    pub status: i32,
-    pub url: Option<String>,
-    pub log: Option<String>,
-    pub disruptive: bool,
+    inner: ModSecurityIntervention,
 }
 
-impl From<ModSecurityIntervention> for Intervention {
-    fn from(intervention: modsecurity_sys::ModSecurityIntervention) -> Self {
-        let url = if intervention.url.is_null() {
-            None
-        } else {
-            Some(
-                unsafe { std::ffi::CStr::from_ptr(intervention.url) }
-                    .to_string_lossy()
-                    .into_owned(),
-            )
-        };
+impl Debug for Intervention {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Intervention")
+            .field("status", &self.status())
+            .field("pause", &self.pause())
+            .field("url", &self.url())
+            .field("log", &self.log())
+            .field("disruptive", &self.disruptive())
+            .finish()
+    }
+}
 
-        let log = if intervention.log.is_null() {
-            None
-        } else {
-            Some(
-                unsafe { std::ffi::CStr::from_ptr(intervention.log) }
-                    .to_string_lossy()
-                    .into_owned(),
-            )
-        };
+impl Intervention {
+    pub fn status(&self) -> i32 {
+        self.inner.status
+    }
 
-        Self {
-            status: intervention.status,
-            url,
-            log,
-            disruptive: intervention.disruptive != 0,
+    pub fn pause(&self) -> i32 {
+        self.inner.pause
+    }
+
+    pub fn url(&self) -> Option<&str> {
+        if self.inner.url.is_null() {
+            return None;
+        }
+
+        unsafe { CStr::from_ptr(self.inner.url).to_str().ok() }
+    }
+
+    pub fn log(&self) -> Option<&str> {
+        if self.inner.url.is_null() {
+            return None;
+        }
+
+        unsafe { CStr::from_ptr(self.inner.log).to_str().ok() }
+    }
+
+    pub fn disruptive(&self) -> bool {
+        self.inner.disruptive != 0
+    }
+}
+
+impl Drop for Intervention {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.inner.url.is_null() {
+                let _ = CString::from_raw(self.inner.url);
+            }
+
+            if !self.inner.log.is_null() {
+                let _ = CString::from_raw(self.inner.log);
+            }
         }
     }
 }
