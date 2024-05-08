@@ -1,10 +1,8 @@
-# modsecurity
+# {{crate}}
 
-[![Crates.io](https://img.shields.io/crates/v/modsecurity.svg)](https://crates.io/crates/modsecurity)
+[![Crates.io](https://img.shields.io/crates/v/modsecurity-sys.svg)](https://crates.io/crates/modsecurity-sys)
 
-A Rust-interface to the [ModSecurity](https://github.com/owasp-modsecurity/ModSecurity/) library.
-
-If you're looking for low-level FFI bindings to libmodsecurity, check out [modsecurity-sys](./modsecurity-sys/README.md).
+{{readme}}
 
 ## License
 
