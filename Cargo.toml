@@ -2,16 +2,20 @@
 name = "modsecurity"
 version = "0.1.1-alpha.2"
 authors = ["Rohan Krishnaswamy <rohan@fastmail.us>"]
-repository.workspace = true
+repository = "https://github.com/rkrishn7/rust-modsecurity"
 readme = "README.md"
-license.workspace = true
+license = "MIT OR Apache-2.0"
 description = "A high-level Rust interface to libmodsecurity"
 keywords = ["modsecurity", "security", "waf"]
 edition = "2021"
 
+include = ["../LICENSE-MIT", "../LICENSE-APACHE", "/README.md", "src/*.rs"]
+
 [workspace]
-package.repository = "https://github.com/rkrishn7/rust-modsecurity"
-package.license = "MIT OR Apache-2.0"
+# Workspace inheritance has an impact on MSRV and breaks cargo-readme, which
+# is why we don't use it at the moment.
+#
+# ref(cargo-readme): https://github.com/webern/cargo-readme/issues/81
 
 [dependencies]
 modsecurity-sys = { path = "modsecurity-sys", version = "0.1.1-alpha.2" }
