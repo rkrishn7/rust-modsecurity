@@ -1,17 +1,24 @@
+use std::marker::PhantomData;
+
 use crate::{ModSecurity, ModSecurityResult, Rules};
 
 use modsecurity_sys::{
     msc_add_request_header, msc_intervention, msc_new_transaction, msc_process_logging,
-    msc_process_request_body, msc_process_request_headers, ModSecurityIntervention,
-    Transaction as ModSecurityTransaction,
+    msc_process_request_body, msc_process_request_headers, msc_update_status_code,
+    ModSecurityIntervention, Transaction as ModSecurityTransaction,
 };
 
 type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
 
 pub struct Transaction<'a> {
     inner: *mut ModSecurityTransaction,
-    rules: &'a Rules,
-    log_cb: Option<Box<LogCallback>>,
+    /// This field ensures that the lifetime of `Transaction` is tied to the `ModSecurity` and `Rules`
+    /// instances that it was created from.
+    _phantom: PhantomData<&'a ()>,
+    /// We store the callback here to ensure it's kept alive for the lifetime of the `Transaction`
+    /// instance. Along with the lifetime constraints on this struct, this ensures that the callback
+    /// can be safely invoked.
+    _log_cb: Option<Box<LogCallback>>,
 }
 
 impl Drop for Transaction<'_> {
@@ -39,8 +46,8 @@ impl<'a> Transaction<'a> {
         // invoke in the callback
         Self {
             inner: msc_transaction,
-            rules,
-            log_cb,
+            _log_cb: log_cb,
+            _phantom: PhantomData,
         }
     }
 
@@ -134,6 +141,16 @@ impl<'a> Transaction<'a> {
             Some(Intervention::from(intervention))
         } else {
             None
+        }
+    }
+
+    pub fn update_status_code(&mut self, status: i32) -> ModSecurityResult<()> {
+        let result = unsafe { msc_update_status_code(self.inner, status) };
+
+        if result < 0 {
+            Err(crate::ModSecurityError::UpdateStatusCode)
+        } else {
+            Ok(())
         }
     }
 }

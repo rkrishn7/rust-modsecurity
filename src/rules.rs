@@ -20,11 +20,12 @@ impl Rules {
     pub fn add_file<P: AsRef<Path>>(&mut self, file: P) -> ModSecurityResult<()> {
         let file = std::ffi::CString::new(file.as_ref().to_str().expect("Invalid file path"))?;
 
-        let error = std::ffi::CString::new("")?.into_raw() as *mut *const i8;
-        let result = unsafe { msc_rules_add_file(self.inner, file.as_ptr(), error) };
+        let error = std::ffi::CString::new("")?.into_raw();
+        let result =
+            unsafe { msc_rules_add_file(self.inner, file.as_ptr(), &mut (error as *const i8)) };
 
         if result < 0 {
-            let raw_err_msg = unsafe { std::ffi::CString::from_raw(*error as *mut i8) };
+            let raw_err_msg = unsafe { std::ffi::CString::from_raw(error) };
 
             Err(crate::ModSecurityError::RulesAddFile(
                 raw_err_msg.to_string_lossy().into_owned(),

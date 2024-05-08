@@ -20,6 +20,7 @@ pub fn main() {
         &rules,
         Some(Box::new(|msg| println!("Log: {:?}", msg))),
     );
+
     transaction
         .process_connection("127.0.0.2", 22, "127.0.0.3", 8080)
         .expect("error processing connection");

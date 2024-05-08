@@ -23,10 +23,6 @@ impl ModSecurity {
         }
     }
 
-    pub fn transaction<'a>(&'a self, rules: &'a Rules) -> Transaction<'a> {
-        Transaction::new(self, rules, None)
-    }
-
     pub fn whoami(&self) -> String {
         let c_str = unsafe {
             let c_str = msc_who_am_i(self.inner());

@@ -16,6 +16,8 @@ pub enum ModSecurityError {
     Intervention,
     /// Error when adding a file to the rule set
     RulesAddFile(String),
+    /// Error when updating the status code
+    UpdateStatusCode,
 }
 
 impl From<std::ffi::NulError> for ModSecurityError {
