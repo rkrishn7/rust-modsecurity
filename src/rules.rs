@@ -10,6 +10,12 @@ pub struct Rules {
     inner: *mut Rules_t,
 }
 
+impl Default for Rules {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rules {
     pub fn new() -> Self {
         Self {

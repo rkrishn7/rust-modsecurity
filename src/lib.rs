@@ -21,6 +21,12 @@ pub struct ModSecurity {
     inner: *mut ModSecurity_t,
 }
 
+impl Default for ModSecurity {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModSecurity {
     pub fn new() -> Self {
         Self {
