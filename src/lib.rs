@@ -1,3 +1,7 @@
+//! A Rust-interface to the [ModSecurity](https://github.com/owasp-modsecurity/ModSecurity/) library.
+//!
+//! If you're looking for low-level FFI bindings to libmodsecurity, check out [modsecurity-sys](./modsecurity-sys/README.md).
+
 use std::ffi::CStr;
 
 use modsecurity_sys::{msc_cleanup, msc_init, msc_who_am_i, ModSecurity_t};
