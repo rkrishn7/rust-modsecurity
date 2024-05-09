@@ -118,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        path: [".", "./modsecurity-sys"]
+        crate: [".", "./modsecurity-sys"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -134,6 +134,8 @@ jobs:
         env:
           CRATE: ${{ matrix.crate }}
       - name: Compare with current README
+        env:
+          CRATE: ${{ matrix.crate }}
         run: |
           cd ${CRATE}
           if diff README.md GENERATED_README.md > /dev/null; then
