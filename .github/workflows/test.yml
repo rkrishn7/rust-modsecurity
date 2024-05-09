@@ -86,15 +86,54 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
       - name: Install stable
         uses: dtolnay/rust-toolchain@stable
       - name: Install nightly for -Zminimal-versions
         uses: dtolnay/rust-toolchain@nightly
       - name: rustup default stable
         run: rustup default stable
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
       - name: Install cargo-minimal-versions
         uses: taiki-e/install-action@cargo-minimal-versions
       - name: cargo test
+        env:
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
         run: cargo minimal-versions test --workspace --ignore-private
   coverage:
     # Use llvm-cov to build and collect coverage and outputs in a format that
@@ -105,6 +144,41 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
       - name: Install stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -112,6 +186,8 @@ jobs:
       - name: cargo install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: cargo llvm-cov
+        env:
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
       - name: Record Rust version
         run: echo "RUST=$(rustc --version)" >> "$GITHUB_ENV"
