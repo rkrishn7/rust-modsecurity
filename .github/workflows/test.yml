@@ -26,6 +26,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install git g++ apt-utils autoconf automake build-essential libcurl4-openssl-dev libgeoip-dev liblmdb-dev libpcre2-dev libtool libxml2-dev libyajl-dev pkgconf zlib1g-dev
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        working-directory: v3
+        run: |
+          rm -rf v3
       - name: Install ${{ matrix.toolchain }}
         uses: dtolnay/rust-toolchain@master
         with:
