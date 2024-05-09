@@ -1,0 +1,199 @@
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel in-progress builds for new commits that are pushed to a PR or branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+name: test
+
+jobs:
+  required:
+    runs-on: ubuntu-latest
+    name: ubuntu / ${{ matrix.toolchain }}
+    strategy:
+      matrix:
+        # run on stable and beta to ensure that tests won't break on the next version of the rust
+        # toolchain
+        toolchain: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
+      - name: Install ${{ matrix.toolchain }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Test all --all-features
+        env:
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+        run: cargo test --workspace --all-features --all-targets
+      # https://github.com/rust-lang/cargo/issues/6669
+      - name: cargo test --doc
+        env:
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+        run: cargo test --workspace --all-features --doc
+  minimal:
+    # This action chooses the oldest version of the dependencies permitted by Cargo.toml to ensure
+    # that this crate is compatible with the minimal version that this crate and its dependencies
+    # require. This will pickup issues where this crate relies on functionality that was introduced
+    # later than the actual version specified (e.g., when we choose just a major version, but a
+    # method was added after this version).
+    runs-on: ubuntu-latest
+    name: ubuntu / stable / minimal-versions
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
+      - name: Install stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install nightly for -Zminimal-versions
+        uses: dtolnay/rust-toolchain@nightly
+      - name: rustup default stable
+        run: rustup default stable
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Install cargo-minimal-versions
+        uses: taiki-e/install-action@cargo-minimal-versions
+      - name: cargo test
+        env:
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+        run: cargo minimal-versions test --workspace --ignore-private
+  coverage:
+    # Use llvm-cov to build and collect coverage and outputs in a format that
+    # is compatible with codecov.io
+    runs-on: ubuntu-latest
+    name: ubuntu / stable / coverage
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
+      - name: Install stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - name: cargo install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: cargo llvm-cov
+        env:
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+      - name: Record Rust version
+        run: echo "RUST=$(rustc --version)" >> "$GITHUB_ENV"
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          env_vars: OS,RUST

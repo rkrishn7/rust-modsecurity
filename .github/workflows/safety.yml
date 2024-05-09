@@ -1,0 +1,141 @@
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel in-progress builds for new commits that are pushed to a PR or branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+name: safety
+
+jobs:
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
+      - name: Install nightly
+        uses: dtolnay/rust-toolchain@nightly
+      - name: Enable debug symbols
+        run: |
+            # To get the symbolizer for debug symbol resolution
+            sudo apt install llvm
+            # To fix buggy leak analyzer:
+            # https://github.com/japaric/rust-san#unrealiable-leaksanitizer
+            # Ensure there's a profile.dev section
+            if ! grep -qE '^[ \t]*[profile.dev]' Cargo.toml; then
+                echo >> Cargo.toml
+                echo '[profile.dev]' >> Cargo.toml
+            fi
+            # Remove pre-existing opt-levels in profile.dev
+            sed -i '/^\s*\[profile.dev\]/,/^\s*\[/ {/^\s*opt-level/d}' Cargo.toml
+            # Now set opt-level to 1
+            sed -i '/^\s*\[profile.dev\]/a opt-level = 1' Cargo.toml
+            cat Cargo.toml
+      - name: cargo test -Zsanitizer=address
+        # Only --lib --tests b/c of https://github.com/rust-lang/rust/issues/53945
+        run: cargo test --lib --tests --all-features --target x86_64-unknown-linux-gnu
+        env:
+          ASAN_OPTIONS: "detect_odr_violation=0:detect_leaks=0"
+          RUSTFLAGS: "-Z sanitizer=address"
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+      - name: cargo test -Zsanitizer=leak
+        run: cargo test --all-features --target x86_64-unknown-linux-gnu
+        env:
+          LSAN_OPTIONS: "suppressions=lsan-suppressions.txt"
+          RUSTFLAGS: "-Z sanitizer=leak"
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+  miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
+      - run: |
+          echo "NIGHTLY=nightly-$(curl -s https://rust-lang.github.io/rustup-components-history/x86_64-unknown-linux-gnu/miri)" >> $GITHUB_ENV
+      - name: Install ${{ env.NIGHTLY }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.NIGHTLY }}
+          components: miri
+      - name: cargo miri test
+        run: cargo miri test
+        env:
+          MIRIFLAGS: ""
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
