@@ -20,5 +20,5 @@ fn main() {
 /// linking directives.
 fn try_system_modsecurity() -> Result<pkg_config::Library, pkg_config::Error> {
     let mut cfg = pkg_config::Config::new();
-    cfg.range_version("3.0.0"..="3.0.12").probe("modsecurity")
+    cfg.atleast_version("3.0.9").probe("modsecurity")
 }

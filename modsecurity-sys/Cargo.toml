@@ -18,7 +18,7 @@ include = [
 ]
 
 [build-dependencies]
-pkg-config = "0.3.9"
+pkg-config = "0.3.30"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
