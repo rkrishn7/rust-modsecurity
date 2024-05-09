@@ -5,28 +5,31 @@ use std::{
     os::raw::{c_char, c_uchar, c_void},
 };
 
-use crate::{ModSecurity, ModSecurityError, ModSecurityResult, Rules};
-
-use modsecurity_sys::{
-    msc_add_request_header, msc_intervention, msc_new_transaction, msc_new_transaction_with_id,
-    msc_process_logging, msc_process_request_body, msc_process_request_headers,
-    msc_update_status_code, ModSecurityIntervention, Transaction as ModSecurityTransaction,
+use crate::{
+    bindings::{
+        types::{ModSecurityIntervention_t, Transaction_t},
+        Bindings, RawBindings,
+    },
+    msc::ModSecurity,
+    ModSecurityError, ModSecurityResult, Rules,
 };
 
-pub struct TransactionBuilder<'a> {
-    ms: &'a ModSecurity,
+pub struct TransactionBuilder<'a, B: RawBindings = Bindings> {
+    ms: &'a ModSecurity<B>,
     rules: &'a Rules,
     log_cb: Option<LogCallback>,
     id: Option<&'a str>,
+    _bindings: PhantomData<B>,
 }
 
-impl<'a> TransactionBuilder<'a> {
-    pub(crate) fn new(ms: &'a ModSecurity, rules: &'a Rules) -> Self {
+impl<'a, B: RawBindings> TransactionBuilder<'a, B> {
+    pub(crate) fn new(ms: &'a ModSecurity<B>, rules: &'a Rules) -> Self {
         Self {
             ms,
             rules,
             log_cb: None,
             id: None,
+            _bindings: PhantomData,
         }
     }
 
@@ -43,7 +46,7 @@ impl<'a> TransactionBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> ModSecurityResult<Transaction<'a>> {
+    pub fn build(self) -> ModSecurityResult<Transaction<'a, B>> {
         let transaction = Transaction::new(self.ms, self.rules, self.id, self.log_cb);
         transaction
     }
@@ -51,11 +54,11 @@ impl<'a> TransactionBuilder<'a> {
 
 type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
 
-pub struct Transaction<'a> {
-    inner: *mut ModSecurityTransaction,
+pub struct Transaction<'a, B: RawBindings = Bindings> {
+    inner: *mut Transaction_t,
     /// This field ensures that the lifetime of `Transaction` is tied to the `ModSecurity` and `Rules`
-    /// instances that it was created from.
-    _phantom: PhantomData<&'a ()>,
+    /// instances that it was created from. We pack in B and 'a here even though they are unreleated.
+    _phantom: PhantomData<&'a B>,
     /// We store the callback here to ensure it's kept alive for the lifetime of the `Transaction`
     /// instance. Along with the lifetime constraints on this struct, this ensures that the callback
     /// can be safely invoked.
@@ -64,10 +67,10 @@ pub struct Transaction<'a> {
     _id: Option<*mut c_char>,
 }
 
-impl Drop for Transaction<'_> {
+impl<B: RawBindings> Drop for Transaction<'_, B> {
     fn drop(&mut self) {
         unsafe {
-            modsecurity_sys::msc_transaction_cleanup(self.inner);
+            B::msc_transaction_cleanup(self.inner);
             if let Some(id) = self._id {
                 let _ = CString::from_raw(id);
             }
@@ -85,9 +88,9 @@ macro_rules! msc_result {
     };
 }
 
-impl<'a> Transaction<'a> {
+impl<'a, B: RawBindings> Transaction<'a, B> {
     pub(crate) fn new(
-        ms: &'a ModSecurity,
+        ms: &'a ModSecurity<B>,
         rules: &'a Rules,
         id: Option<&str>,
         log_cb: Option<LogCallback>,
@@ -106,12 +109,12 @@ impl<'a> Transaction<'a> {
                 let id = CString::new(id)?.into_raw();
                 (
                     Some(id),
-                    msc_new_transaction_with_id(ms.inner(), rules.inner(), id, log_cb_raw),
+                    B::msc_new_transaction_with_id(ms.inner(), rules.inner(), id, log_cb_raw),
                 )
             } else {
                 (
                     None,
-                    msc_new_transaction(ms.inner(), rules.inner(), log_cb_raw),
+                    B::msc_new_transaction(ms.inner(), rules.inner(), log_cb_raw),
                 )
             }
         };
@@ -127,7 +130,7 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn process_logging(&mut self) -> ModSecurityResult<()> {
-        let result = unsafe { msc_process_logging(self.inner) };
+        let result = unsafe { B::msc_process_logging(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessLogging, ())
     }
@@ -156,13 +159,13 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn process_request_body(&mut self) -> ModSecurityResult<()> {
-        let result = unsafe { msc_process_request_body(self.inner) };
+        let result = unsafe { B::msc_process_request_body(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessRequestBody, ())
     }
 
     pub fn process_request_headers(&mut self) -> ModSecurityResult<()> {
-        let result = unsafe { msc_process_request_headers(self.inner) };
+        let result = unsafe { B::msc_process_request_headers(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessRequestHeaders, ())
     }
@@ -172,7 +175,7 @@ impl<'a> Transaction<'a> {
         let value = CString::new(value)?;
 
         let result = unsafe {
-            msc_add_request_header(
+            B::msc_add_request_header(
                 self.inner,
                 key.as_ptr() as *const c_uchar,
                 value.as_ptr() as *const c_uchar,
@@ -183,7 +186,7 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn intervention(&mut self) -> Option<Intervention> {
-        let mut intervention = ModSecurityIntervention {
+        let mut intervention = ModSecurityIntervention_t {
             status: 200,
             pause: 0,
             url: std::ptr::null_mut() as *mut c_char,
@@ -191,7 +194,7 @@ impl<'a> Transaction<'a> {
             disruptive: 0,
         };
 
-        let result = unsafe { msc_intervention(self.inner, &mut intervention) };
+        let result = unsafe { B::msc_intervention(self.inner, &mut intervention) };
 
         if result > 0 {
             Some(Intervention {
@@ -203,7 +206,7 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn update_status_code(&mut self, status: i32) -> ModSecurityResult<()> {
-        let result = unsafe { msc_update_status_code(self.inner, status) };
+        let result = unsafe { B::msc_update_status_code(self.inner, status) };
 
         msc_result!(result, ModSecurityError::UpdateStatusCode, ())
     }
@@ -211,7 +214,7 @@ impl<'a> Transaction<'a> {
 
 #[derive(Clone)]
 pub struct Intervention {
-    inner: ModSecurityIntervention,
+    inner: ModSecurityIntervention_t,
 }
 
 impl Debug for Intervention {

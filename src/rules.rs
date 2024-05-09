@@ -1,25 +1,28 @@
-use std::{ffi::CString, os::raw::c_char, path::Path};
+use std::{ffi::CString, marker::PhantomData, os::raw::c_char, path::Path};
 
-use modsecurity_sys::{
-    msc_create_rules_set, msc_rules_add_file, msc_rules_cleanup, msc_rules_dump, Rules_t,
+use crate::bindings::types::Rules_t;
+
+use crate::{
+    bindings::{Bindings, RawBindings},
+    ModSecurityResult,
 };
 
-use crate::ModSecurityResult;
-
-pub struct Rules {
+pub struct Rules<B: RawBindings = Bindings> {
     inner: *mut Rules_t,
+    _bindings: PhantomData<B>,
 }
 
-impl Default for Rules {
+impl<B: RawBindings> Default for Rules<B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Rules {
+impl<B: RawBindings> Rules<B> {
     pub fn new() -> Self {
         Self {
-            inner: unsafe { msc_create_rules_set() },
+            inner: unsafe { B::msc_create_rules_set() },
+            _bindings: PhantomData,
         }
     }
 
@@ -27,7 +30,7 @@ impl Rules {
         let file = CString::new(file.as_ref().to_str().expect("Invalid file path"))?;
 
         let mut error: *const i8 = std::ptr::null();
-        let result = unsafe { msc_rules_add_file(self.inner, file.as_ptr(), &mut error) };
+        let result = unsafe { B::msc_rules_add_file(self.inner, file.as_ptr(), &mut error) };
 
         if result < 0 {
             let raw_err_msg = unsafe { CString::from_raw(error as *mut c_char) };
@@ -42,7 +45,7 @@ impl Rules {
 
     pub fn dump(&mut self) {
         unsafe {
-            msc_rules_dump(self.inner);
+            B::msc_rules_dump(self.inner);
         }
     }
 
@@ -51,10 +54,10 @@ impl Rules {
     }
 }
 
-impl Drop for Rules {
+impl<B: RawBindings> Drop for Rules<B> {
     fn drop(&mut self) {
         unsafe {
-            msc_rules_cleanup(self.inner);
+            B::msc_rules_cleanup(self.inner);
         }
     }
 }
