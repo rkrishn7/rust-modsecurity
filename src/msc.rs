@@ -2,8 +2,7 @@ use std::{ffi::CStr, marker::PhantomData};
 
 use crate::bindings::{types::ModSecurity_t, Bindings, RawBindings};
 
-use crate::rules::Rules;
-use crate::transaction::TransactionBuilder;
+use crate::transaction::TransactionBuilderWithoutRules;
 use crate::ModSecurityResult;
 
 pub struct ModSecurity<B: RawBindings = Bindings> {
@@ -25,8 +24,8 @@ impl<B: RawBindings> ModSecurity<B> {
         }
     }
 
-    pub fn transaction_builder<'a>(&'a self, rules: &'a Rules) -> TransactionBuilder<'a, B> {
-        TransactionBuilder::new(self, rules)
+    pub fn transaction_builder<'a>(&'a self) -> TransactionBuilderWithoutRules<'a, B> {
+        TransactionBuilderWithoutRules::new(self)
     }
 
     pub fn whoami(&self) -> String {

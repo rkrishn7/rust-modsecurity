@@ -14,6 +14,20 @@ use crate::{
     ModSecurityError, ModSecurityResult, Rules,
 };
 
+pub struct TransactionBuilderWithoutRules<'a, B: RawBindings = Bindings> {
+    ms: &'a ModSecurity<B>,
+}
+
+impl<'a, B: RawBindings> TransactionBuilderWithoutRules<'a, B> {
+    pub(crate) fn new(ms: &'a ModSecurity<B>) -> Self {
+        Self { ms }
+    }
+
+    pub fn with_rules(self, rules: &'a Rules) -> TransactionBuilder<'a, B> {
+        TransactionBuilder::new(self.ms, rules)
+    }
+}
+
 pub struct TransactionBuilder<'a, B: RawBindings = Bindings> {
     ms: &'a ModSecurity<B>,
     rules: &'a Rules,
