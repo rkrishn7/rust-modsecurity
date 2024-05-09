@@ -37,13 +37,28 @@ jobs:
       - name: Install libmodsecurity v3
         working-directory: v3
         run: |
-          sudo apt-get install git g++ apt-utils autoconf automake build-essential libcurl4-openssl-dev libgeoip-dev liblmdb-dev libpcre2-dev libtool libxml2-dev libyajl-dev pkgconf zlib1g-dev
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
           sh build.sh
           ./configure
           make
           sudo make install
       - name: Remove ModSecurity repository
-        working-directory: v3
         run: |
           rm -rf v3
       - name: Install ${{ matrix.toolchain }}
@@ -51,9 +66,13 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
       - name: Test all --all-features
+        env:
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
         run: cargo test --workspace --all-features --all-targets
       # https://github.com/rust-lang/cargo/issues/6669
       - name: cargo test --doc
+        env:
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
         run: cargo test --workspace --all-features --doc
   minimal:
     # This action chooses the oldest version of the dependencies permitted by Cargo.toml to ensure
