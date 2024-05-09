@@ -1,6 +1,6 @@
 # modsecurity-sys
 
-[![Crates.io](https://img.shields.io/crates/v/modsecurity-sys.svg)](https://crates.io/crates/modsecurity-sys)
+[![Crates.io](https://img.shields.io/crates/v/modsecurity-sys.svg)](https://crates.io/crates/modsecurity-sys) ![MSRV](https://img.shields.io/badge/msrv-1.58.1-orange) ![Check](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/check.yml/badge.svg) ![Safety](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/safety.yml/badge.svg) ![Test](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/test.yml/badge.svg) ![Contributions](https://img.shields.io/badge/contributions-welcome-green)
 
 Low-level FFI bindings to the C [ModSecurity](https://github.com/owasp-modsecurity/ModSecurity/) library.
 
