@@ -20,6 +20,41 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
       - name: Install nightly
         uses: dtolnay/rust-toolchain@nightly
       - name: Enable debug symbols
@@ -44,17 +79,54 @@ jobs:
         env:
           ASAN_OPTIONS: "detect_odr_violation=0:detect_leaks=0"
           RUSTFLAGS: "-Z sanitizer=address"
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
       - name: cargo test -Zsanitizer=leak
         run: cargo test --all-features --target x86_64-unknown-linux-gnu
         env:
           LSAN_OPTIONS: "suppressions=lsan-suppressions.txt"
           RUSTFLAGS: "-Z sanitizer=leak"
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
   miri:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Checkout ModSecurity v3
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: 'owasp-modsecurity/ModSecurity'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: 'v3'
+          ref: 'v3/master'
+      - name: Install libmodsecurity v3
+        working-directory: v3
+        run: |
+          sudo apt-get install \
+          git \
+          g++ \
+          apt-utils \
+          autoconf \
+          automake \
+          build-essential \
+          libcurl4-openssl-dev \
+          libgeoip-dev \
+          liblmdb-dev \
+          libpcre2-dev \
+          libtool \
+          libxml2-dev \
+          libyajl-dev \
+          pkgconf \
+          zlib1g-dev
+
+          sh build.sh
+          ./configure
+          make
+          sudo make install
+      - name: Remove ModSecurity repository
+        run: |
+          rm -rf v3
       - run: |
           echo "NIGHTLY=nightly-$(curl -s https://rust-lang.github.io/rustup-components-history/x86_64-unknown-linux-gnu/miri)" >> $GITHUB_ENV
       - name: Install ${{ env.NIGHTLY }}
@@ -66,3 +138,4 @@ jobs:
         run: cargo miri test
         env:
           MIRIFLAGS: ""
+          PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
