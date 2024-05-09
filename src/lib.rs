@@ -2,6 +2,8 @@
 //!
 //! If you're looking for low-level FFI bindings to libmodsecurity, check out [modsecurity-sys](./modsecurity-sys/README.md).
 
+#![warn(missing_docs)]
+
 mod bindings;
 mod error;
 mod msc;

@@ -24,7 +24,7 @@ impl<B: RawBindings> ModSecurity<B> {
         }
     }
 
-    pub fn transaction_builder<'a>(&'a self) -> TransactionBuilderWithoutRules<'a, B> {
+    pub fn transaction_builder(&self) -> TransactionBuilderWithoutRules<'_, B> {
         TransactionBuilderWithoutRules::new(self)
     }
 
