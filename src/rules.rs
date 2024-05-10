@@ -85,13 +85,13 @@ impl<B: RawBindings> Rules<B> {
     }
 }
 
-impl<B: RawBindings> Drop for Rules<B> {
-    fn drop(&mut self) {
-        unsafe {
-            B::msc_rules_cleanup(self.inner);
-        }
-    }
-}
+// impl<B: RawBindings> Drop for Rules<B> {
+//     fn drop(&mut self) {
+//         unsafe {
+//             B::msc_rules_cleanup(self.inner);
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

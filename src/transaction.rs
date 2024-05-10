@@ -81,16 +81,16 @@ pub struct Transaction<'a, B: RawBindings = Bindings> {
     _id: Option<*mut c_char>,
 }
 
-impl<B: RawBindings> Drop for Transaction<'_, B> {
-    fn drop(&mut self) {
-        unsafe {
-            B::msc_transaction_cleanup(self.inner);
-            if let Some(id) = self._id {
-                let _ = CString::from_raw(id);
-            }
-        }
-    }
-}
+// impl<B: RawBindings> Drop for Transaction<'_, B> {
+//     fn drop(&mut self) {
+//         unsafe {
+//             B::msc_transaction_cleanup(self.inner);
+//             if let Some(id) = self._id {
+//                 let _ = CString::from_raw(id);
+//             }
+//         }
+//     }
+// }
 
 macro_rules! msc_result {
     ($result:expr, $err:expr, $ok:expr) => {

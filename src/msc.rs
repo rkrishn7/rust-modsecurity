@@ -103,13 +103,13 @@ impl<B: RawBindings> ModSecurity<B> {
     }
 }
 
-impl<B: RawBindings> Drop for ModSecurity<B> {
-    fn drop(&mut self) {
-        unsafe {
-            B::msc_cleanup(self.inner);
-        }
-    }
-}
+// impl<B: RawBindings> Drop for ModSecurity<B> {
+//     fn drop(&mut self) {
+//         unsafe {
+//             B::msc_cleanup(self.inner);
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
