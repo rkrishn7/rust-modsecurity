@@ -61,6 +61,8 @@ jobs:
       - name: Remove ModSecurity repository
         run: |
           rm -rf v3
+      - name: Update /etc/ld.so.conf
+        run: echo "include /usr/local/modsecurity/lib/*.conf" | sudo tee -a /etc/ld.so.conf
       - name: Install ${{ matrix.toolchain }}
         uses: dtolnay/rust-toolchain@master
         with:
