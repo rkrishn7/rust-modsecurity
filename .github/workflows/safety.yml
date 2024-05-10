@@ -84,6 +84,7 @@ jobs:
       - name: cargo test -Zsanitizer=leak
         run: cargo test --all-features --target x86_64-unknown-linux-gnu
         env:
+          LSAN_OPTIONS: "suppressions=/home/runner/work/rust-modsecurity/rust-modsecurity/lsan-suppressions.txt"
           RUSTFLAGS: "-Z sanitizer=leak"
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
           LD_LIBRARY_PATH: /usr/local/modsecurity/lib
