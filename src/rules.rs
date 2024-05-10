@@ -163,14 +163,17 @@ mod tests {
         "#;
 
         let mut rules = Rules::<Bindings>::new();
-        println!("{:?}", rules.inner);
-
-        rules.dump();
 
         assert!(matches!(
             rules.add_plain(plain_rules),
             Err(ModSecurityError::RulesAddPlain(_))
         ));
+    }
+
+    struct MockDumpBindings;
+
+    impl RawBindings for MockDumpBindings {
+        unsafe fn msc_rules_dump(_: *mut Rules_t) {}
     }
 
     #[test]
@@ -179,11 +182,10 @@ mod tests {
             SecRuleEngine On
         "#;
 
-        let mut rules = Rules::<Bindings>::new();
-        println!("{:?}", rules.inner);
-
-        rules.dump();
+        let mut rules = Rules::<MockDumpBindings>::new();
 
         rules.add_plain(plain_rules).unwrap();
+
+        rules.dump();
     }
 }
