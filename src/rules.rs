@@ -11,6 +11,7 @@ use crate::{
 
 lazy_static! {
     static ref PARSE: Mutex<()> = Mutex::new(());
+    static ref DESTROY: Mutex<()> = Mutex::new(());
 }
 
 pub struct Rules<B: RawBindings = Bindings> {
@@ -85,13 +86,14 @@ impl<B: RawBindings> Rules<B> {
     }
 }
 
-// impl<B: RawBindings> Drop for Rules<B> {
-//     fn drop(&mut self) {
-//         unsafe {
-//             B::msc_rules_cleanup(self.inner);
-//         }
-//     }
-// }
+impl<B: RawBindings> Drop for Rules<B> {
+    fn drop(&mut self) {
+        let _lock = DESTROY.lock().expect("Poisoned lock");
+        unsafe {
+            B::msc_rules_cleanup(self.inner);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

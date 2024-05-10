@@ -1,7 +1,9 @@
+use lazy_static::lazy_static;
 use std::{
     ffi::CString,
     marker::PhantomData,
     os::raw::{c_char, c_uchar, c_void},
+    sync::Mutex,
 };
 
 use crate::{
@@ -13,6 +15,10 @@ use crate::{
     msc::ModSecurity,
     ModSecurityError, ModSecurityResult, Rules,
 };
+
+lazy_static! {
+    static ref DESTROY: Mutex<()> = Mutex::new(());
+}
 
 pub struct TransactionBuilderWithoutRules<'a, B: RawBindings = Bindings> {
     ms: &'a ModSecurity<B>,
@@ -81,16 +87,17 @@ pub struct Transaction<'a, B: RawBindings = Bindings> {
     _id: Option<*mut c_char>,
 }
 
-// impl<B: RawBindings> Drop for Transaction<'_, B> {
-//     fn drop(&mut self) {
-//         unsafe {
-//             B::msc_transaction_cleanup(self.inner);
-//             if let Some(id) = self._id {
-//                 let _ = CString::from_raw(id);
-//             }
-//         }
-//     }
-// }
+impl<B: RawBindings> Drop for Transaction<'_, B> {
+    fn drop(&mut self) {
+        let _lock = DESTROY.lock().expect("Poisoned lock");
+        unsafe {
+            B::msc_transaction_cleanup(self.inner);
+            if let Some(id) = self._id {
+                let _ = CString::from_raw(id);
+            }
+        }
+    }
+}
 
 macro_rules! msc_result {
     ($result:expr, $err:expr, $ok:expr) => {

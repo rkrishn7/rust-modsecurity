@@ -1,9 +1,15 @@
+use lazy_static::lazy_static;
+use std::sync::Mutex;
 use std::{ffi::CStr, marker::PhantomData};
 
 use crate::bindings::{types::ModSecurity_t, Bindings, RawBindings};
 
 use crate::transaction::TransactionBuilderWithoutRules;
 use crate::ModSecurityResult;
+
+lazy_static! {
+    static ref DESTROY: Mutex<()> = Mutex::new(());
+}
 
 pub struct ModSecurityBuilder<B: RawBindings = Bindings> {
     msc: ModSecurity<B>,
@@ -103,13 +109,14 @@ impl<B: RawBindings> ModSecurity<B> {
     }
 }
 
-// impl<B: RawBindings> Drop for ModSecurity<B> {
-//     fn drop(&mut self) {
-//         unsafe {
-//             B::msc_cleanup(self.inner);
-//         }
-//     }
-// }
+impl<B: RawBindings> Drop for ModSecurity<B> {
+    fn drop(&mut self) {
+        let _lock = DESTROY.lock().expect("Poisoned lock");
+        unsafe {
+            B::msc_cleanup(self.inner);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
