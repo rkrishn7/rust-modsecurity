@@ -68,13 +68,13 @@ jobs:
       - name: Test all --all-features
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
-          PKG_CONFIG_ALL_STATIC: 1
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
         run: cargo test --workspace --all-features --all-targets
       # https://github.com/rust-lang/cargo/issues/6669
       - name: cargo test --doc
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
-          PKG_CONFIG_ALL_STATIC: 1
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
         run: cargo test --workspace --all-features --doc
   minimal:
     # This action chooses the oldest version of the dependencies permitted by Cargo.toml to ensure
