@@ -1,8 +1,7 @@
 use modsecurity::{ModSecurity, Rules};
 
 pub fn main() {
-    let mut ms = ModSecurity::new();
-    ms.enable_log_callbacks();
+    let ms = ModSecurity::builder().with_log_callbacks().build();
     println!("ModSecurity version: {}", ms.whoami());
 
     let mut rules = Rules::new();

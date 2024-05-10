@@ -6,11 +6,13 @@
 
 mod bindings;
 mod error;
+mod intervention;
 mod msc;
 mod rules;
 mod transaction;
 
 pub use error::ModSecurityError;
+pub use intervention::Intervention;
 
 pub type ModSecurityResult<T> = Result<T, ModSecurityError>;
 

@@ -55,25 +55,12 @@ pub trait RawBindings {
             value: *const ::std::os::raw::c_uchar
         ) -> ::std::os::raw::c_int;
 
-        unsafe fn msc_add_n_request_header(
-            transaction: *mut Transaction,
-            key: *const ::std::os::raw::c_uchar,
-            len_key: usize,
-            value: *const ::std::os::raw::c_uchar,
-            len_value: usize
-        ) -> ::std::os::raw::c_int;
-
         unsafe fn msc_process_request_body(transaction: *mut Transaction) -> ::std::os::raw::c_int;
 
         unsafe fn msc_append_request_body(
             transaction: *mut Transaction,
             body: *const ::std::os::raw::c_uchar,
             size: usize
-        ) -> ::std::os::raw::c_int;
-
-        unsafe fn msc_request_body_from_file(
-            transaction: *mut Transaction,
-            path: *const ::std::os::raw::c_char
         ) -> ::std::os::raw::c_int;
 
         unsafe fn msc_process_response_headers(
@@ -86,14 +73,6 @@ pub trait RawBindings {
             transaction: *mut Transaction,
             key: *const ::std::os::raw::c_uchar,
             value: *const ::std::os::raw::c_uchar
-        ) -> ::std::os::raw::c_int;
-
-        unsafe fn msc_add_n_response_header(
-            transaction: *mut Transaction,
-            key: *const ::std::os::raw::c_uchar,
-            len_key: usize,
-            value: *const ::std::os::raw::c_uchar,
-            len_value: usize
         ) -> ::std::os::raw::c_int;
 
         unsafe fn msc_process_response_body(transaction: *mut Transaction) -> ::std::os::raw::c_int;
@@ -111,8 +90,6 @@ pub trait RawBindings {
             http_version: *const ::std::os::raw::c_char
         ) -> ::std::os::raw::c_int;
 
-        unsafe fn msc_get_response_body(transaction: *mut Transaction) -> *const ::std::os::raw::c_char;
-
         unsafe fn msc_get_response_body_length(transaction: *mut Transaction) -> usize;
 
         unsafe fn msc_get_request_body_length(transaction: *mut Transaction) -> usize;
@@ -125,11 +102,6 @@ pub trait RawBindings {
         ) -> ::std::os::raw::c_int;
 
         unsafe fn msc_process_logging(transaction: *mut Transaction) -> ::std::os::raw::c_int;
-
-        unsafe fn msc_update_status_code(
-            transaction: *mut Transaction,
-            status: ::std::os::raw::c_int
-        ) -> ::std::os::raw::c_int;
 
         unsafe fn msc_init() -> *mut ModSecurity;
 
@@ -144,19 +116,6 @@ pub trait RawBindings {
         unsafe fn msc_create_rules_set() -> *mut RulesSet;
 
         unsafe fn msc_rules_dump(rules: *mut RulesSet);
-
-        unsafe fn msc_rules_merge(
-            rules_dst: *mut RulesSet,
-            rules_from: *mut RulesSet,
-            error: *mut *const ::std::os::raw::c_char
-        ) -> ::std::os::raw::c_int;
-
-        unsafe fn msc_rules_add_remote(
-            rules: *mut RulesSet,
-            key: *const ::std::os::raw::c_char,
-            uri: *const ::std::os::raw::c_char,
-            error: *mut *const ::std::os::raw::c_char
-        ) -> ::std::os::raw::c_int;
 
         unsafe fn msc_rules_add_file(
             rules: *mut RulesSet,

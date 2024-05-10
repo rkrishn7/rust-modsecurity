@@ -5,6 +5,32 @@ use crate::bindings::{types::ModSecurity_t, Bindings, RawBindings};
 use crate::transaction::TransactionBuilderWithoutRules;
 use crate::ModSecurityResult;
 
+pub struct ModSecurityBuilder<B: RawBindings = Bindings> {
+    msc: ModSecurity<B>,
+}
+
+impl<B: RawBindings> ModSecurityBuilder<B> {
+    fn new() -> Self {
+        Self {
+            msc: ModSecurity::new(),
+        }
+    }
+
+    pub fn with_connector_info(mut self, connector: &str) -> ModSecurityResult<Self> {
+        self.msc.set_connector_info(connector)?;
+        Ok(self)
+    }
+
+    pub fn with_log_callbacks(mut self) -> Self {
+        self.msc.enable_log_callbacks();
+        self
+    }
+
+    pub fn build(self) -> ModSecurity<B> {
+        self.msc
+    }
+}
+
 pub struct ModSecurity<B: RawBindings = Bindings> {
     inner: *mut ModSecurity_t,
     _bindings: PhantomData<B>,
@@ -24,20 +50,22 @@ impl<B: RawBindings> ModSecurity<B> {
         }
     }
 
+    pub fn builder() -> ModSecurityBuilder<B> {
+        ModSecurityBuilder::new()
+    }
+
     pub fn transaction_builder(&self) -> TransactionBuilderWithoutRules<'_, B> {
         TransactionBuilderWithoutRules::new(self)
     }
 
-    pub fn whoami(&self) -> String {
-        let c_str = unsafe {
-            let c_str = B::msc_who_am_i(self.inner());
-            CStr::from_ptr(c_str)
-        };
-
-        String::from_utf8_lossy(c_str.to_bytes()).to_string()
+    pub fn whoami(&self) -> &str {
+        unsafe {
+            let raw = B::msc_who_am_i(self.inner());
+            std::str::from_utf8_unchecked(CStr::from_ptr(raw).to_bytes())
+        }
     }
 
-    pub fn set_connector_info(&mut self, connector: &str) -> ModSecurityResult<()> {
+    fn set_connector_info(&mut self, connector: &str) -> ModSecurityResult<()> {
         let connector = std::ffi::CString::new(connector)?;
 
         unsafe {
@@ -47,7 +75,7 @@ impl<B: RawBindings> ModSecurity<B> {
         Ok(())
     }
 
-    pub fn enable_log_callbacks(&mut self) {
+    fn enable_log_callbacks(&mut self) {
         unsafe extern "C" fn native_log_cb(
             cb: *mut std::os::raw::c_void,
             msg: *const ::std::os::raw::c_void,
@@ -80,5 +108,57 @@ impl<B: RawBindings> Drop for ModSecurity<B> {
         unsafe {
             B::msc_cleanup(self.inner);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ModSecurityError;
+
+    use super::*;
+
+    struct TestBindings;
+
+    impl RawBindings for TestBindings {
+        unsafe fn msc_who_am_i(
+            _: *mut modsecurity_sys::ModSecurity,
+        ) -> *const std::os::raw::c_char {
+            "ModSecurity vX.X.X\0".as_ptr() as *const std::os::raw::c_char
+        }
+    }
+
+    #[test]
+    fn test_modsecurity_whoami() {
+        let ms: ModSecurity<TestBindings> = ModSecurity::new();
+        assert_eq!(ms.whoami(), "ModSecurity vX.X.X");
+    }
+
+    #[test]
+    fn test_set_connector_info_valid() {
+        let ms = ModSecurity::<TestBindings>::builder().with_connector_info("valid connector info");
+        assert!(ms.is_ok());
+    }
+
+    #[test]
+    fn test_set_connector_info_invalid() {
+        let ms =
+            ModSecurity::<TestBindings>::builder().with_connector_info("invalid\0connector\0info");
+        assert!(matches!(ms, Err(ModSecurityError::Nul(_))));
+    }
+
+    #[test]
+    fn test_enable_log_callbacks() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        assert_eq!(ms.whoami(), "ModSecurity vX.X.X");
+    }
+
+    #[test]
+    fn test_transaction_builder() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        assert_eq!(ms.whoami(), "ModSecurity vX.X.X");
     }
 }
