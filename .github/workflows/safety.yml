@@ -138,6 +138,6 @@ jobs:
       - name: cargo miri test
         run: cargo miri test
         env:
-          MIRIFLAGS: ""
+          MIRIFLAGS: "-Zmiri-disable-isolation"
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
           LD_LIBRARY_PATH: /usr/local/modsecurity/lib

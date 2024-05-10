@@ -44,11 +44,14 @@ impl<B: RawBindings> Rules<B> {
         let result = unsafe { B::msc_rules_add_file(self.inner, file.as_ptr(), &mut error) };
 
         if result < 0 {
-            let raw_err_msg = unsafe { CString::from_raw(error as *mut c_char) };
+            let error = if error.is_null() {
+                "Unknown error".to_string()
+            } else {
+                let raw_err_msg = unsafe { CString::from_raw(error as *mut c_char) };
+                raw_err_msg.to_string_lossy().into_owned()
+            };
 
-            Err(crate::ModSecurityError::RulesAddFile(
-                raw_err_msg.to_string_lossy().into_owned(),
-            ))
+            Err(crate::ModSecurityError::RulesAddFile(error))
         } else {
             Ok(())
         }
@@ -65,11 +68,14 @@ impl<B: RawBindings> Rules<B> {
         let result = unsafe { B::msc_rules_add(self.inner, plain_rules.as_ptr(), &mut error) };
 
         if result < 0 {
-            let raw_err_msg = unsafe { CString::from_raw(error as *mut c_char) };
+            let error = if error.is_null() {
+                "Unknown error".to_string()
+            } else {
+                let raw_err_msg = unsafe { CString::from_raw(error as *mut c_char) };
+                raw_err_msg.to_string_lossy().into_owned()
+            };
 
-            Err(crate::ModSecurityError::RulesAddPlain(
-                raw_err_msg.to_string_lossy().into_owned(),
-            ))
+            Err(crate::ModSecurityError::RulesAddPlain(error))
         } else {
             Ok(())
         }
@@ -104,6 +110,76 @@ mod tests {
     use super::*;
     use tempfile::NamedTempFile;
 
+    struct TestBindings;
+
+    #[cfg(miri)]
+    impl RawBindings for TestBindings {
+        unsafe fn msc_create_rules_set() -> *mut Rules_t {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_rules_add_file(
+            _: *mut Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            0
+        }
+
+        unsafe fn msc_rules_add(
+            _: *mut Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            0
+        }
+
+        unsafe fn msc_rules_cleanup(_: *mut Rules_t) -> std::os::raw::c_int {
+            0
+        }
+
+        unsafe fn msc_rules_dump(_: *mut Rules_t) {}
+    }
+
+    struct TestFallibleBindings;
+
+    #[cfg(miri)]
+    impl RawBindings for TestFallibleBindings {
+        unsafe fn msc_create_rules_set() -> *mut Rules_t {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_rules_add_file(
+            _: *mut Rules_t,
+            _: *const std::os::raw::c_char,
+            e: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            -1
+        }
+
+        unsafe fn msc_rules_add(
+            _: *mut Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            -1
+        }
+
+        unsafe fn msc_rules_cleanup(_: *mut Rules_t) -> std::os::raw::c_int {
+            0
+        }
+    }
+
+    #[cfg(not(miri))]
+    impl RawBindings for TestBindings {
+        unsafe fn msc_rules_dump(_: *mut Rules_t) {}
+    }
+
+    #[cfg(not(miri))]
+    impl RawBindings for TestFallibleBindings {
+        unsafe fn msc_rules_dump(_: *mut Rules_t) {}
+    }
+
     #[test]
     fn test_rules_add_file_ok() {
         let plain_rules = r#"
@@ -114,7 +190,7 @@ mod tests {
             .write_all(plain_rules.as_bytes())
             .unwrap();
 
-        let mut rules = Rules::<Bindings>::new();
+        let mut rules = Rules::<TestBindings>::new();
 
         assert!(matches!(rules.add_file(file.path()), Ok(())));
     }
@@ -129,7 +205,7 @@ mod tests {
             .write_all(plain_rules.as_bytes())
             .unwrap();
 
-        let mut rules = Rules::<Bindings>::new();
+        let mut rules = Rules::<TestFallibleBindings>::new();
 
         assert!(matches!(
             rules.add_file(file.path()),
@@ -139,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_rules_add_file_nonexistent() {
-        let mut rules = Rules::<Bindings>::new();
+        let mut rules = Rules::<TestFallibleBindings>::new();
 
         assert!(matches!(
             rules.add_file("/some/invalid/path/that/does/not/exist"),
@@ -153,7 +229,7 @@ mod tests {
             SecRuleEngine On
         "#;
 
-        let mut rules = Rules::<Bindings>::new();
+        let mut rules = Rules::<TestBindings>::new();
 
         assert!(matches!(rules.add_plain(plain_rules), Ok(())));
     }
@@ -164,18 +240,12 @@ mod tests {
             InvalidDirectiveXXX Yeet
         "#;
 
-        let mut rules = Rules::<Bindings>::new();
+        let mut rules = Rules::<TestFallibleBindings>::new();
 
         assert!(matches!(
             rules.add_plain(plain_rules),
             Err(ModSecurityError::RulesAddPlain(_))
         ));
-    }
-
-    struct MockDumpBindings;
-
-    impl RawBindings for MockDumpBindings {
-        unsafe fn msc_rules_dump(_: *mut Rules_t) {}
     }
 
     #[test]
@@ -184,7 +254,7 @@ mod tests {
             SecRuleEngine On
         "#;
 
-        let mut rules = Rules::<MockDumpBindings>::new();
+        let mut rules = Rules::<TestBindings>::new();
 
         rules.add_plain(plain_rules).unwrap();
 

@@ -11,9 +11,11 @@ use crate::{
         types::{ModSecurityIntervention_t, Transaction_t},
         Bindings, RawBindings,
     },
+    error::ModSecurityError,
     intervention::Intervention,
     msc::ModSecurity,
-    ModSecurityError, ModSecurityResult, Rules,
+    rules::Rules,
+    ModSecurityResult,
 };
 
 lazy_static! {
@@ -29,21 +31,21 @@ impl<'a, B: RawBindings> TransactionBuilderWithoutRules<'a, B> {
         Self { ms }
     }
 
-    pub fn with_rules(self, rules: &'a Rules) -> TransactionBuilder<'a, B> {
+    pub fn with_rules(self, rules: &'a Rules<B>) -> TransactionBuilder<'a, B> {
         TransactionBuilder::new(self.ms, rules)
     }
 }
 
 pub struct TransactionBuilder<'a, B: RawBindings = Bindings> {
     ms: &'a ModSecurity<B>,
-    rules: &'a Rules,
+    rules: &'a Rules<B>,
     log_cb: Option<LogCallback>,
     id: Option<&'a str>,
     _bindings: PhantomData<B>,
 }
 
 impl<'a, B: RawBindings> TransactionBuilder<'a, B> {
-    pub(crate) fn new(ms: &'a ModSecurity<B>, rules: &'a Rules) -> Self {
+    pub(crate) fn new(ms: &'a ModSecurity<B>, rules: &'a Rules<B>) -> Self {
         Self {
             ms,
             rules,
@@ -112,7 +114,7 @@ macro_rules! msc_result {
 impl<'a, B: RawBindings> Transaction<'a, B> {
     pub(crate) fn new(
         ms: &'a ModSecurity<B>,
-        rules: &'a Rules,
+        rules: &'a Rules<B>,
         id: Option<&str>,
         log_cb: Option<LogCallback>,
     ) -> ModSecurityResult<Self> {
@@ -297,11 +299,189 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
 mod tests {
     use std::sync::{atomic::AtomicBool, Arc};
 
-    use crate::{bindings::Bindings, msc::ModSecurity, rules::Rules, ModSecurityError};
+    use crate::{msc::ModSecurity, rules::Rules, ModSecurityError};
+
+    pub struct TestBindings;
+
+    #[cfg(not(miri))]
+    impl crate::bindings::RawBindings for TestBindings {}
+
+    #[cfg(miri)]
+    impl crate::bindings::RawBindings for TestBindings {
+        unsafe fn msc_transaction_cleanup(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) {
+        }
+
+        unsafe fn msc_intervention(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _intervention: *mut crate::bindings::types::ModSecurityIntervention_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_get_request_body_length(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> usize {
+            1
+        }
+
+        unsafe fn msc_get_response_body_length(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> usize {
+            1
+        }
+
+        unsafe fn msc_init() -> *mut modsecurity_sys::ModSecurity {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_set_connector_info(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: *const std::os::raw::c_char,
+        ) {
+        }
+
+        unsafe fn msc_set_log_cb(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: modsecurity_sys::ModSecLogCb,
+        ) {
+        }
+
+        unsafe fn msc_cleanup(_: *mut modsecurity_sys::ModSecurity) {}
+
+        unsafe fn msc_new_transaction(
+            _msc: *mut modsecurity_sys::ModSecurity,
+            _rules: *mut modsecurity_sys::RulesSet,
+            _log_cb: *mut std::ffi::c_void,
+        ) -> *mut crate::bindings::types::Transaction_t {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_new_transaction_with_id(
+            _msc: *mut modsecurity_sys::ModSecurity,
+            _rules: *mut modsecurity_sys::RulesSet,
+            _id: *mut std::os::raw::c_char,
+            _log_cb: *mut std::ffi::c_void,
+        ) -> *mut crate::bindings::types::Transaction_t {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_create_rules_set() -> *mut crate::bindings::types::Rules_t {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_rules_add_file(
+            _: *mut crate::bindings::types::Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            1
+        }
+
+        unsafe fn msc_rules_add(
+            _: *mut crate::bindings::types::Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            1
+        }
+
+        unsafe fn msc_rules_cleanup(
+            _: *mut crate::bindings::types::Rules_t,
+        ) -> std::os::raw::c_int {
+            1
+        }
+
+        unsafe fn msc_rules_dump(_: *mut crate::bindings::types::Rules_t) {}
+
+        unsafe fn msc_process_logging(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_connection(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _client: *const std::os::raw::c_char,
+            _c_port: i32,
+            _server: *const std::os::raw::c_char,
+            _s_port: i32,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_uri(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _uri: *const std::os::raw::c_char,
+            _protocol: *const std::os::raw::c_char,
+            _http_version: *const std::os::raw::c_char,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_append_request_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _body: *const std::os::raw::c_uchar,
+            _size: usize,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_append_response_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _body: *const std::os::raw::c_uchar,
+            _size: usize,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_request_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_response_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_request_headers(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_response_headers(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _code: i32,
+            _protocol: *const std::os::raw::c_char,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_add_request_header(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _key: *const std::os::raw::c_uchar,
+            _value: *const std::os::raw::c_uchar,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_add_response_header(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _key: *const std::os::raw::c_uchar,
+            _value: *const std::os::raw::c_uchar,
+        ) -> i32 {
+            1
+        }
+    }
 
     #[test]
     fn test_with_logging_callbacks() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -332,14 +512,17 @@ mod tests {
         transaction.process_uri("/test", "GET", "1.1").unwrap();
         transaction.process_request_headers().unwrap();
 
-        // We're in DetectionOnly mode so there should be no intervention raised
-        assert_eq!(transaction.intervention().is_some(), false);
-        assert_eq!(flag.load(std::sync::atomic::Ordering::SeqCst), true);
+        #[cfg(not(miri))]
+        {
+            // We're in DetectionOnly mode so there should be no intervention raised
+            assert_eq!(transaction.intervention().is_some(), false);
+            assert_eq!(flag.load(std::sync::atomic::Ordering::SeqCst), true);
+        }
     }
 
     #[test]
     fn test_logging_enabled_without_callback() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -359,12 +542,13 @@ mod tests {
         transaction.process_request_headers().unwrap();
 
         // We're in DetectionOnly mode so there should be no intervention raised
+        #[cfg(not(miri))]
         assert_eq!(transaction.intervention().is_some(), false);
     }
 
     #[test]
     fn test_process_logging() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -397,12 +581,13 @@ mod tests {
         // The logging phase is always executed
         transaction.process_logging().unwrap();
 
+        #[cfg(not(miri))]
         assert_eq!(flag.load(std::sync::atomic::Ordering::SeqCst), true);
     }
 
     #[test]
     fn test_process_uri() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -422,12 +607,13 @@ mod tests {
         transaction.process_request_headers().unwrap();
 
         // We're in DetectionOnly mode so there should be no intervention raised
+        #[cfg(not(miri))]
         assert_eq!(transaction.intervention().is_some(), true);
     }
 
     #[test]
     fn test_process_connection() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -448,12 +634,13 @@ mod tests {
             .unwrap();
         transaction.process_request_headers().unwrap();
 
+        #[cfg(not(miri))]
         assert_eq!(transaction.intervention().is_some(), true);
     }
 
     #[test]
     fn test_request_body() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -475,13 +662,16 @@ mod tests {
         transaction.process_request_headers().unwrap();
         transaction.process_request_body().unwrap();
 
-        assert_eq!(transaction.get_request_body_length(), 4);
-        assert_eq!(transaction.intervention().is_some(), true);
+        #[cfg(not(miri))]
+        {
+            assert_eq!(transaction.get_request_body_length(), 4);
+            assert_eq!(transaction.intervention().is_some(), true);
+        }
     }
 
     #[test]
     fn test_response_body() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -502,13 +692,16 @@ mod tests {
         transaction.append_response_body("test".as_bytes()).unwrap();
         transaction.process_response_body().unwrap();
 
-        assert_eq!(transaction.get_response_body_length(), 4);
-        assert_eq!(transaction.intervention().is_some(), true);
+        #[cfg(not(miri))]
+        {
+            assert_eq!(transaction.get_response_body_length(), 4);
+            assert_eq!(transaction.intervention().is_some(), true);
+        }
     }
 
     #[test]
     fn test_request_headers() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -534,12 +727,14 @@ mod tests {
             .add_request_header("X-Client-Port", "22")
             .unwrap();
         transaction.process_request_headers().unwrap();
+
+        #[cfg(not(miri))]
         assert_eq!(transaction.intervention().is_some(), true);
     }
 
     #[test]
     fn test_response_headers() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -567,12 +762,14 @@ mod tests {
         transaction.process_response_headers(500, "GET").unwrap();
 
         let intervention = transaction.intervention().unwrap();
+
+        #[cfg(not(miri))]
         assert_eq!(intervention.status(), 500);
     }
 
     #[test]
     pub fn test_intervention_fields() {
-        let ms = ModSecurity::<Bindings>::builder()
+        let ms = ModSecurity::<TestBindings>::builder()
             .with_log_callbacks()
             .build();
         let mut rules = Rules::new();
@@ -600,12 +797,15 @@ mod tests {
             .unwrap();
         transaction.process_request_headers().unwrap();
 
-        let intervention = transaction.intervention().unwrap();
-        assert_eq!(intervention.status(), 403);
-        assert_eq!(intervention.pause(), 0);
-        assert_eq!(intervention.url(), None);
-        assert!(matches!(intervention.log(), Some(_)));
-        assert_eq!(intervention.disruptive(), true);
+        #[cfg(not(miri))]
+        {
+            let intervention = transaction.intervention().unwrap();
+            assert_eq!(intervention.status(), 403);
+            assert_eq!(intervention.pause(), 0);
+            assert_eq!(intervention.url(), None);
+            assert!(matches!(intervention.log(), Some(_)));
+            assert_eq!(intervention.disruptive(), true);
+        }
     }
 
     // Simulate failures in the bindings to make sure our error types are
@@ -613,6 +813,108 @@ mod tests {
     pub struct FallibleBindings;
 
     impl crate::bindings::RawBindings for FallibleBindings {
+        #[cfg(miri)]
+        unsafe fn msc_transaction_cleanup(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) {
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_intervention(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _intervention: *mut crate::bindings::types::ModSecurityIntervention_t,
+        ) -> i32 {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_get_request_body_length(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> usize {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_get_response_body_length(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> usize {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_init() -> *mut modsecurity_sys::ModSecurity {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_set_connector_info(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: *const std::os::raw::c_char,
+        ) {
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_set_log_cb(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: modsecurity_sys::ModSecLogCb,
+        ) {
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_cleanup(_: *mut modsecurity_sys::ModSecurity) {}
+
+        #[cfg(miri)]
+        unsafe fn msc_new_transaction(
+            _msc: *mut modsecurity_sys::ModSecurity,
+            _rules: *mut modsecurity_sys::RulesSet,
+            _log_cb: *mut std::ffi::c_void,
+        ) -> *mut crate::bindings::types::Transaction_t {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_new_transaction_with_id(
+            _msc: *mut modsecurity_sys::ModSecurity,
+            _rules: *mut modsecurity_sys::RulesSet,
+            _id: *mut std::os::raw::c_char,
+            _log_cb: *mut std::ffi::c_void,
+        ) -> *mut crate::bindings::types::Transaction_t {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_create_rules_set() -> *mut crate::bindings::types::Rules_t {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_rules_add_file(
+            _: *mut crate::bindings::types::Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_rules_add(
+            _: *mut crate::bindings::types::Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_rules_cleanup(
+            _: *mut crate::bindings::types::Rules_t,
+        ) -> std::os::raw::c_int {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_rules_dump(_: *mut crate::bindings::types::Rules_t) {}
+
         unsafe fn msc_process_logging(
             _transaction: *mut crate::bindings::types::Transaction_t,
         ) -> i32 {

@@ -132,6 +132,28 @@ mod tests {
         ) -> *const std::os::raw::c_char {
             "ModSecurity vX.X.X\0".as_ptr() as *const std::os::raw::c_char
         }
+
+        #[cfg(miri)]
+        unsafe fn msc_init() -> *mut modsecurity_sys::ModSecurity {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_set_connector_info(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: *const std::os::raw::c_char,
+        ) {
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_set_log_cb(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: modsecurity_sys::ModSecLogCb,
+        ) {
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_cleanup(_: *mut modsecurity_sys::ModSecurity) {}
     }
 
     #[test]
