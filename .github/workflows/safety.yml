@@ -80,12 +80,14 @@ jobs:
           ASAN_OPTIONS: "detect_odr_violation=0:detect_leaks=0"
           RUSTFLAGS: "-Z sanitizer=address"
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
       - name: cargo test -Zsanitizer=leak
         run: cargo test --all-features --target x86_64-unknown-linux-gnu
         env:
           LSAN_OPTIONS: "suppressions=lsan-suppressions.txt"
           RUSTFLAGS: "-Z sanitizer=leak"
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
   miri:
     runs-on: ubuntu-latest
     steps:
@@ -139,3 +141,4 @@ jobs:
         env:
           MIRIFLAGS: ""
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib

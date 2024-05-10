@@ -102,6 +102,7 @@ jobs:
         uses: obi1kenobi/cargo-semver-checks-action@v2
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
   doc:
     # Run docs generation on nightly rather than stable. This enables features like
     # https://doc.rust-lang.org/beta/unstable-book/language-features/doc-cfg.html which allows an
@@ -154,6 +155,7 @@ jobs:
         env:
           RUSTDOCFLAGS: --cfg docsrs
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
   hack:
     # `cargo-hack` checks combinations of feature flags to ensure that features are all additive
     # which is required for feature unification
@@ -207,6 +209,7 @@ jobs:
         run: cargo hack --feature-powerset check
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
   msrv:
     # Check that we can build using the minimal rust version that is specified by this crate
     runs-on: ubuntu-latest
@@ -261,6 +264,7 @@ jobs:
         run: cargo check
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
   readme:
     runs-on: ubuntu-latest
     strategy:
