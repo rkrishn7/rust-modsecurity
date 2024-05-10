@@ -136,6 +136,7 @@ jobs:
       - name: cargo test
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
         run: cargo minimal-versions test --workspace --ignore-private
   coverage:
     # Use llvm-cov to build and collect coverage and outputs in a format that
@@ -190,6 +191,7 @@ jobs:
       - name: cargo llvm-cov
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
       - name: Record Rust version
         run: echo "RUST=$(rustc --version)" >> "$GITHUB_ENV"
