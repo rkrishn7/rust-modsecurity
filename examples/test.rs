@@ -1,8 +1,7 @@
 use modsecurity::{ModSecurity, Rules};
 
 pub fn main() {
-    let mut ms = ModSecurity::new();
-    ms.enable_log_callbacks();
+    let ms = ModSecurity::builder().with_log_callbacks().build();
     println!("ModSecurity version: {}", ms.whoami());
 
     let mut rules = Rules::new();
@@ -16,7 +15,8 @@ pub fn main() {
     println!("Rules added successfully");
 
     let mut transaction = ms
-        .transaction_builder(&rules)
+        .transaction_builder()
+        .with_rules(&rules)
         .with_logging(|msg| println!("Log: {:?}", msg))
         .build()
         .expect("error building transaction");

@@ -68,11 +68,13 @@ jobs:
       - name: Test all --all-features
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
         run: cargo test --workspace --all-features --all-targets
       # https://github.com/rust-lang/cargo/issues/6669
       - name: cargo test --doc
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
         run: cargo test --workspace --all-features --doc
   minimal:
     # This action chooses the oldest version of the dependencies permitted by Cargo.toml to ensure
@@ -134,6 +136,7 @@ jobs:
       - name: cargo test
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
         run: cargo minimal-versions test --workspace --ignore-private
   coverage:
     # Use llvm-cov to build and collect coverage and outputs in a format that
@@ -188,6 +191,7 @@ jobs:
       - name: cargo llvm-cov
         env:
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig
+          LD_LIBRARY_PATH: /usr/local/modsecurity/lib
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
       - name: Record Rust version
         run: echo "RUST=$(rustc --version)" >> "$GITHUB_ENV"

@@ -1,32 +1,57 @@
+use lazy_static::lazy_static;
 use std::{
-    ffi::{CStr, CString},
-    fmt::Debug,
+    ffi::CString,
     marker::PhantomData,
     os::raw::{c_char, c_uchar, c_void},
+    sync::Mutex,
 };
 
-use crate::{ModSecurity, ModSecurityError, ModSecurityResult, Rules};
-
-use modsecurity_sys::{
-    msc_add_request_header, msc_intervention, msc_new_transaction, msc_new_transaction_with_id,
-    msc_process_logging, msc_process_request_body, msc_process_request_headers,
-    msc_update_status_code, ModSecurityIntervention, Transaction as ModSecurityTransaction,
+use crate::{
+    bindings::{
+        types::{ModSecurityIntervention_t, Transaction_t},
+        Bindings, RawBindings,
+    },
+    error::ModSecurityError,
+    intervention::Intervention,
+    msc::ModSecurity,
+    rules::Rules,
+    ModSecurityResult,
 };
 
-pub struct TransactionBuilder<'a> {
-    ms: &'a ModSecurity,
-    rules: &'a Rules,
-    log_cb: Option<LogCallback>,
-    id: Option<&'a str>,
+lazy_static! {
+    static ref DESTROY: Mutex<()> = Mutex::new(());
 }
 
-impl<'a> TransactionBuilder<'a> {
-    pub(crate) fn new(ms: &'a ModSecurity, rules: &'a Rules) -> Self {
+pub struct TransactionBuilderWithoutRules<'a, B: RawBindings = Bindings> {
+    ms: &'a ModSecurity<B>,
+}
+
+impl<'a, B: RawBindings> TransactionBuilderWithoutRules<'a, B> {
+    pub(crate) fn new(ms: &'a ModSecurity<B>) -> Self {
+        Self { ms }
+    }
+
+    pub fn with_rules(self, rules: &'a Rules<B>) -> TransactionBuilder<'a, B> {
+        TransactionBuilder::new(self.ms, rules)
+    }
+}
+
+pub struct TransactionBuilder<'a, B: RawBindings = Bindings> {
+    ms: &'a ModSecurity<B>,
+    rules: &'a Rules<B>,
+    log_cb: Option<LogCallback>,
+    id: Option<&'a str>,
+    _bindings: PhantomData<B>,
+}
+
+impl<'a, B: RawBindings> TransactionBuilder<'a, B> {
+    pub(crate) fn new(ms: &'a ModSecurity<B>, rules: &'a Rules<B>) -> Self {
         Self {
             ms,
             rules,
             log_cb: None,
             id: None,
+            _bindings: PhantomData,
         }
     }
 
@@ -43,7 +68,7 @@ impl<'a> TransactionBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> ModSecurityResult<Transaction<'a>> {
+    pub fn build(self) -> ModSecurityResult<Transaction<'a, B>> {
         let transaction = Transaction::new(self.ms, self.rules, self.id, self.log_cb);
         transaction
     }
@@ -51,11 +76,11 @@ impl<'a> TransactionBuilder<'a> {
 
 type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
 
-pub struct Transaction<'a> {
-    inner: *mut ModSecurityTransaction,
+pub struct Transaction<'a, B: RawBindings = Bindings> {
+    inner: *mut Transaction_t,
     /// This field ensures that the lifetime of `Transaction` is tied to the `ModSecurity` and `Rules`
-    /// instances that it was created from.
-    _phantom: PhantomData<&'a ()>,
+    /// instances that it was created from. We pack in B and 'a here even though they are unreleated.
+    _phantom: PhantomData<&'a B>,
     /// We store the callback here to ensure it's kept alive for the lifetime of the `Transaction`
     /// instance. Along with the lifetime constraints on this struct, this ensures that the callback
     /// can be safely invoked.
@@ -64,10 +89,11 @@ pub struct Transaction<'a> {
     _id: Option<*mut c_char>,
 }
 
-impl Drop for Transaction<'_> {
+impl<B: RawBindings> Drop for Transaction<'_, B> {
     fn drop(&mut self) {
+        let _lock = DESTROY.lock().expect("Poisoned lock");
         unsafe {
-            modsecurity_sys::msc_transaction_cleanup(self.inner);
+            B::msc_transaction_cleanup(self.inner);
             if let Some(id) = self._id {
                 let _ = CString::from_raw(id);
             }
@@ -77,18 +103,18 @@ impl Drop for Transaction<'_> {
 
 macro_rules! msc_result {
     ($result:expr, $err:expr, $ok:expr) => {
-        if $result < 0 {
-            return Err($err);
-        } else {
+        if $result == 1 {
             Ok($ok)
+        } else {
+            Err($err)
         }
     };
 }
 
-impl<'a> Transaction<'a> {
+impl<'a, B: RawBindings> Transaction<'a, B> {
     pub(crate) fn new(
-        ms: &'a ModSecurity,
-        rules: &'a Rules,
+        ms: &'a ModSecurity<B>,
+        rules: &'a Rules<B>,
         id: Option<&str>,
         log_cb: Option<LogCallback>,
     ) -> ModSecurityResult<Self> {
@@ -106,12 +132,12 @@ impl<'a> Transaction<'a> {
                 let id = CString::new(id)?.into_raw();
                 (
                     Some(id),
-                    msc_new_transaction_with_id(ms.inner(), rules.inner(), id, log_cb_raw),
+                    B::msc_new_transaction_with_id(ms.inner(), rules.inner(), id, log_cb_raw),
                 )
             } else {
                 (
                     None,
-                    msc_new_transaction(ms.inner(), rules.inner(), log_cb_raw),
+                    B::msc_new_transaction(ms.inner(), rules.inner(), log_cb_raw),
                 )
             }
         };
@@ -127,7 +153,7 @@ impl<'a> Transaction<'a> {
     }
 
     pub fn process_logging(&mut self) -> ModSecurityResult<()> {
-        let result = unsafe { msc_process_logging(self.inner) };
+        let result = unsafe { B::msc_process_logging(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessLogging, ())
     }
@@ -143,28 +169,71 @@ impl<'a> Transaction<'a> {
         let server = CString::new(server)?;
 
         let result = unsafe {
-            modsecurity_sys::msc_process_connection(
-                self.inner,
-                client.as_ptr(),
-                c_port,
-                server.as_ptr(),
-                s_port,
-            )
+            B::msc_process_connection(self.inner, client.as_ptr(), c_port, server.as_ptr(), s_port)
         };
 
         msc_result!(result, ModSecurityError::ProcessConnection, ())
     }
 
+    pub fn process_uri(
+        &mut self,
+        uri: &str,
+        method: &str,
+        http_version: &str,
+    ) -> ModSecurityResult<()> {
+        let uri = CString::new(uri)?;
+        let protocol = CString::new(method)?;
+        let http_version = CString::new(http_version)?;
+
+        let result = unsafe {
+            B::msc_process_uri(
+                self.inner,
+                uri.as_ptr(),
+                protocol.as_ptr(),
+                http_version.as_ptr(),
+            )
+        };
+
+        msc_result!(result, ModSecurityError::ProcessUri, ())
+    }
+
+    pub fn append_request_body(&mut self, body: &[u8]) -> ModSecurityResult<()> {
+        let result = unsafe { B::msc_append_request_body(self.inner, body.as_ptr(), body.len()) };
+
+        msc_result!(result, ModSecurityError::AppendRequestBody, ())
+    }
+
+    pub fn append_response_body(&mut self, body: &[u8]) -> ModSecurityResult<()> {
+        let result = unsafe { B::msc_append_response_body(self.inner, body.as_ptr(), body.len()) };
+
+        msc_result!(result, ModSecurityError::AppendResponseBody, ())
+    }
+
     pub fn process_request_body(&mut self) -> ModSecurityResult<()> {
-        let result = unsafe { msc_process_request_body(self.inner) };
+        let result = unsafe { B::msc_process_request_body(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessRequestBody, ())
     }
 
+    pub fn process_response_body(&mut self) -> ModSecurityResult<()> {
+        let result = unsafe { B::msc_process_response_body(self.inner) };
+
+        msc_result!(result, ModSecurityError::ProcessResponseBody, ())
+    }
+
     pub fn process_request_headers(&mut self) -> ModSecurityResult<()> {
-        let result = unsafe { msc_process_request_headers(self.inner) };
+        let result = unsafe { B::msc_process_request_headers(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessRequestHeaders, ())
+    }
+
+    pub fn process_response_headers(&mut self, code: i32, protocol: &str) -> ModSecurityResult<()> {
+        let protocol = CString::new(protocol)?;
+
+        let result =
+            unsafe { B::msc_process_response_headers(self.inner, code, protocol.as_ptr()) };
+
+        msc_result!(result, ModSecurityError::ProcessResponseHeaders, ())
     }
 
     pub fn add_request_header(&mut self, key: &str, value: &str) -> ModSecurityResult<()> {
@@ -172,7 +241,7 @@ impl<'a> Transaction<'a> {
         let value = CString::new(value)?;
 
         let result = unsafe {
-            msc_add_request_header(
+            B::msc_add_request_header(
                 self.inner,
                 key.as_ptr() as *const c_uchar,
                 value.as_ptr() as *const c_uchar,
@@ -182,8 +251,23 @@ impl<'a> Transaction<'a> {
         msc_result!(result, ModSecurityError::AddRequestHeader, ())
     }
 
+    pub fn add_response_header(&mut self, key: &str, value: &str) -> ModSecurityResult<()> {
+        let key = CString::new(key)?;
+        let value = CString::new(value)?;
+
+        let result = unsafe {
+            B::msc_add_response_header(
+                self.inner,
+                key.as_ptr() as *const c_uchar,
+                value.as_ptr() as *const c_uchar,
+            )
+        };
+
+        msc_result!(result, ModSecurityError::AddResponseHeader, ())
+    }
+
     pub fn intervention(&mut self) -> Option<Intervention> {
-        let mut intervention = ModSecurityIntervention {
+        let mut intervention = ModSecurityIntervention_t {
             status: 200,
             pause: 0,
             url: std::ptr::null_mut() as *mut c_char,
@@ -191,7 +275,7 @@ impl<'a> Transaction<'a> {
             disruptive: 0,
         };
 
-        let result = unsafe { msc_intervention(self.inner, &mut intervention) };
+        let result = unsafe { B::msc_intervention(self.inner, &mut intervention) };
 
         if result > 0 {
             Some(Intervention {
@@ -202,70 +286,751 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    pub fn update_status_code(&mut self, status: i32) -> ModSecurityResult<()> {
-        let result = unsafe { msc_update_status_code(self.inner, status) };
+    pub fn get_request_body_length(&mut self) -> usize {
+        unsafe { B::msc_get_request_body_length(self.inner) }
+    }
 
-        msc_result!(result, ModSecurityError::UpdateStatusCode, ())
+    pub fn get_response_body_length(&mut self) -> usize {
+        unsafe { B::msc_get_response_body_length(self.inner) }
     }
 }
 
-#[derive(Clone)]
-pub struct Intervention {
-    inner: ModSecurityIntervention,
-}
+#[cfg(test)]
+mod tests {
+    use std::sync::{atomic::AtomicBool, Arc};
 
-impl Debug for Intervention {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Intervention")
-            .field("status", &self.status())
-            .field("pause", &self.pause())
-            .field("url", &self.url())
-            .field("log", &self.log())
-            .field("disruptive", &self.disruptive())
-            .finish()
-    }
-}
+    use crate::{msc::ModSecurity, rules::Rules, ModSecurityError};
 
-impl Intervention {
-    pub fn status(&self) -> i32 {
-        self.inner.status
-    }
+    pub struct TestBindings;
 
-    pub fn pause(&self) -> i32 {
-        self.inner.pause
-    }
+    #[cfg(not(miri))]
+    impl crate::bindings::RawBindings for TestBindings {}
 
-    pub fn url(&self) -> Option<&str> {
-        if self.inner.url.is_null() {
-            return None;
+    #[cfg(miri)]
+    impl crate::bindings::RawBindings for TestBindings {
+        unsafe fn msc_transaction_cleanup(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) {
         }
 
-        unsafe { CStr::from_ptr(self.inner.url).to_str().ok() }
-    }
-
-    pub fn log(&self) -> Option<&str> {
-        if self.inner.log.is_null() {
-            return None;
+        unsafe fn msc_intervention(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _intervention: *mut crate::bindings::types::ModSecurityIntervention_t,
+        ) -> i32 {
+            1
         }
 
-        unsafe { CStr::from_ptr(self.inner.log).to_str().ok() }
-    }
-
-    pub fn disruptive(&self) -> bool {
-        self.inner.disruptive != 0
-    }
-}
-
-impl Drop for Intervention {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.inner.url.is_null() {
-                let _ = CString::from_raw(self.inner.url);
-            }
-
-            if !self.inner.log.is_null() {
-                let _ = CString::from_raw(self.inner.log);
-            }
+        unsafe fn msc_get_request_body_length(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> usize {
+            1
         }
+
+        unsafe fn msc_get_response_body_length(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> usize {
+            1
+        }
+
+        unsafe fn msc_init() -> *mut modsecurity_sys::ModSecurity {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_set_connector_info(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: *const std::os::raw::c_char,
+        ) {
+        }
+
+        unsafe fn msc_set_log_cb(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: modsecurity_sys::ModSecLogCb,
+        ) {
+        }
+
+        unsafe fn msc_cleanup(_: *mut modsecurity_sys::ModSecurity) {}
+
+        unsafe fn msc_new_transaction(
+            _msc: *mut modsecurity_sys::ModSecurity,
+            _rules: *mut modsecurity_sys::RulesSet,
+            _log_cb: *mut std::ffi::c_void,
+        ) -> *mut crate::bindings::types::Transaction_t {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_new_transaction_with_id(
+            _msc: *mut modsecurity_sys::ModSecurity,
+            _rules: *mut modsecurity_sys::RulesSet,
+            _id: *mut std::os::raw::c_char,
+            _log_cb: *mut std::ffi::c_void,
+        ) -> *mut crate::bindings::types::Transaction_t {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_create_rules_set() -> *mut crate::bindings::types::Rules_t {
+            std::ptr::null_mut()
+        }
+
+        unsafe fn msc_rules_add_file(
+            _: *mut crate::bindings::types::Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            1
+        }
+
+        unsafe fn msc_rules_add(
+            _: *mut crate::bindings::types::Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            1
+        }
+
+        unsafe fn msc_rules_cleanup(
+            _: *mut crate::bindings::types::Rules_t,
+        ) -> std::os::raw::c_int {
+            1
+        }
+
+        unsafe fn msc_rules_dump(_: *mut crate::bindings::types::Rules_t) {}
+
+        unsafe fn msc_process_logging(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_connection(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _client: *const std::os::raw::c_char,
+            _c_port: i32,
+            _server: *const std::os::raw::c_char,
+            _s_port: i32,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_uri(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _uri: *const std::os::raw::c_char,
+            _protocol: *const std::os::raw::c_char,
+            _http_version: *const std::os::raw::c_char,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_append_request_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _body: *const std::os::raw::c_uchar,
+            _size: usize,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_append_response_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _body: *const std::os::raw::c_uchar,
+            _size: usize,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_request_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_response_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_request_headers(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_process_response_headers(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _code: i32,
+            _protocol: *const std::os::raw::c_char,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_add_request_header(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _key: *const std::os::raw::c_uchar,
+            _value: *const std::os::raw::c_uchar,
+        ) -> i32 {
+            1
+        }
+
+        unsafe fn msc_add_response_header(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _key: *const std::os::raw::c_uchar,
+            _value: *const std::os::raw::c_uchar,
+        ) -> i32 {
+            1
+        }
+    }
+
+    #[test]
+    fn test_with_logging_callbacks() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine DetectionOnly
+
+                SecRule REQUEST_URI "test" "phase:1,id:'1',t:none,log,deny,status:403,msg:'Access denied'"
+            "#,
+            )
+            .unwrap();
+
+        let flag = Arc::new(AtomicBool::new(false));
+
+        let mut transaction = ms
+            .transaction_builder()
+            .with_rules(&rules)
+            .with_logging({
+                let flag = Arc::clone(&flag);
+                move |_| {
+                    flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            })
+            .build()
+            .unwrap();
+
+        transaction.process_uri("/test", "GET", "1.1").unwrap();
+        transaction.process_request_headers().unwrap();
+
+        #[cfg(not(miri))]
+        {
+            // We're in DetectionOnly mode so there should be no intervention raised
+            assert_eq!(transaction.intervention().is_some(), false);
+            assert_eq!(flag.load(std::sync::atomic::Ordering::SeqCst), true);
+        }
+    }
+
+    #[test]
+    fn test_logging_enabled_without_callback() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine DetectionOnly
+
+                SecRule REQUEST_URI "test" "phase:1,id:'1',t:none,log,deny,status:403,msg:'Access denied'"
+            "#,
+            )
+            .unwrap();
+
+        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+        transaction.process_uri("/test", "GET", "1.1").unwrap();
+        transaction.process_request_headers().unwrap();
+
+        // We're in DetectionOnly mode so there should be no intervention raised
+        #[cfg(not(miri))]
+        assert_eq!(transaction.intervention().is_some(), false);
+    }
+
+    #[test]
+    fn test_process_logging() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine DetectionOnly
+
+                SecRule REQUEST_URI "test" "phase:1,id:'1',t:none,log,deny,status:403,msg:'Access denied'"
+                SecRule REQUEST_URI "test" "phase:5,id:'2',t:none,log,deny,status:403,msg:'Access denied'"
+            "#,
+            )
+            .unwrap();
+
+        let flag = Arc::new(AtomicBool::new(false));
+
+        let mut transaction = ms
+            .transaction_builder()
+            .with_rules(&rules)
+            .with_logging({
+                let flag = Arc::clone(&flag);
+                move |_| {
+                    flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            })
+            .build()
+            .unwrap();
+
+        transaction.process_uri("/test", "GET", "1.1").unwrap();
+        // The logging phase is always executed
+        transaction.process_logging().unwrap();
+
+        #[cfg(not(miri))]
+        assert_eq!(flag.load(std::sync::atomic::Ordering::SeqCst), true);
+    }
+
+    #[test]
+    fn test_process_uri() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine On
+
+                SecRule REQUEST_URI "test" "phase:1,id:'1',t:none,deny"
+            "#,
+            )
+            .unwrap();
+
+        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+        transaction.process_uri("/test", "GET", "1.1").unwrap();
+        transaction.process_request_headers().unwrap();
+
+        // We're in DetectionOnly mode so there should be no intervention raised
+        #[cfg(not(miri))]
+        assert_eq!(transaction.intervention().is_some(), true);
+    }
+
+    #[test]
+    fn test_process_connection() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine On
+
+                SecRule REMOTE_ADDR "@ipMatch 124.123.122.121" "id:35,phase:1,t:none,deny"
+            "#,
+            )
+            .unwrap();
+
+        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+        transaction
+            .process_connection("124.123.122.121", 0, "127.0.0.1", 80)
+            .unwrap();
+        transaction.process_request_headers().unwrap();
+
+        #[cfg(not(miri))]
+        assert_eq!(transaction.intervention().is_some(), true);
+    }
+
+    #[test]
+    fn test_request_body() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine On
+
+                SecRequestBodyAccess On
+
+                SecRule REQUEST_BODY "@rx test" "phase:2,id:'1',t:none,deny"
+            "#,
+            )
+            .unwrap();
+
+        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+        transaction.append_request_body("test".as_bytes()).unwrap();
+        transaction.process_request_headers().unwrap();
+        transaction.process_request_body().unwrap();
+
+        #[cfg(not(miri))]
+        {
+            assert_eq!(transaction.get_request_body_length(), 4);
+            assert_eq!(transaction.intervention().is_some(), true);
+        }
+    }
+
+    #[test]
+    fn test_response_body() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine On
+
+                SecResponseBodyAccess On
+
+                SecRule RESPONSE_BODY "@rx test" "phase:4,id:'1',t:none,deny"
+            "#,
+            )
+            .unwrap();
+
+        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+        transaction.append_response_body("test".as_bytes()).unwrap();
+        transaction.process_response_body().unwrap();
+
+        #[cfg(not(miri))]
+        {
+            assert_eq!(transaction.get_response_body_length(), 4);
+            assert_eq!(transaction.intervention().is_some(), true);
+        }
+    }
+
+    #[test]
+    fn test_request_headers() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine On
+
+                SecRule REQUEST_HEADERS:X-Client-Port "@streq 22" \
+                    "id:'1234567',\
+                    phase:1,\
+                    t:none,\
+                    status:403,\
+                    deny
+            "#,
+            )
+            .unwrap();
+
+        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+        transaction
+            .add_request_header("X-Client-Port", "22")
+            .unwrap();
+        transaction.process_request_headers().unwrap();
+
+        #[cfg(not(miri))]
+        assert_eq!(transaction.intervention().is_some(), true);
+    }
+
+    #[test]
+    fn test_response_headers() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine On
+
+                SecRule RESPONSE_HEADERS:X-Leaked-Key "@rx secret" \
+                    "id:'1234567',\
+                    phase:3,\
+                    t:none,\
+                    status:500,\
+                    deny
+            "#,
+            )
+            .unwrap();
+
+        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+        transaction
+            .add_response_header("X-Leaked-Key", "secret-key")
+            .unwrap();
+        transaction.process_response_headers(500, "GET").unwrap();
+
+        let intervention = transaction.intervention().unwrap();
+
+        #[cfg(not(miri))]
+        assert_eq!(intervention.status(), 500);
+    }
+
+    #[test]
+    pub fn test_intervention_fields() {
+        let ms = ModSecurity::<TestBindings>::builder()
+            .with_log_callbacks()
+            .build();
+        let mut rules = Rules::new();
+
+        rules
+            .add_plain(
+                r#"
+                SecRuleEngine On
+
+                SecRule REQUEST_HEADERS:X-Client-Port "@streq 22" \
+                    "id:'1234567',\
+                    phase:1,\
+                    t:none,\
+                    status:403,\
+                    deny,\
+                    msg:'Access denied'"
+            "#,
+            )
+            .unwrap();
+
+        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+        transaction
+            .add_request_header("X-Client-Port", "22")
+            .unwrap();
+        transaction.process_request_headers().unwrap();
+
+        #[cfg(not(miri))]
+        {
+            let intervention = transaction.intervention().unwrap();
+            assert_eq!(intervention.status(), 403);
+            assert_eq!(intervention.pause(), 0);
+            assert_eq!(intervention.url(), None);
+            assert!(matches!(intervention.log(), Some(_)));
+            assert_eq!(intervention.disruptive(), true);
+        }
+    }
+
+    // Simulate failures in the bindings to make sure our error types are
+    // correctly propagated
+    pub struct FallibleBindings;
+
+    impl crate::bindings::RawBindings for FallibleBindings {
+        #[cfg(miri)]
+        unsafe fn msc_transaction_cleanup(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) {
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_intervention(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _intervention: *mut crate::bindings::types::ModSecurityIntervention_t,
+        ) -> i32 {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_get_request_body_length(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> usize {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_get_response_body_length(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> usize {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_init() -> *mut modsecurity_sys::ModSecurity {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_set_connector_info(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: *const std::os::raw::c_char,
+        ) {
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_set_log_cb(
+            _: *mut modsecurity_sys::ModSecurity,
+            _: modsecurity_sys::ModSecLogCb,
+        ) {
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_cleanup(_: *mut modsecurity_sys::ModSecurity) {}
+
+        #[cfg(miri)]
+        unsafe fn msc_new_transaction(
+            _msc: *mut modsecurity_sys::ModSecurity,
+            _rules: *mut modsecurity_sys::RulesSet,
+            _log_cb: *mut std::ffi::c_void,
+        ) -> *mut crate::bindings::types::Transaction_t {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_new_transaction_with_id(
+            _msc: *mut modsecurity_sys::ModSecurity,
+            _rules: *mut modsecurity_sys::RulesSet,
+            _id: *mut std::os::raw::c_char,
+            _log_cb: *mut std::ffi::c_void,
+        ) -> *mut crate::bindings::types::Transaction_t {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_create_rules_set() -> *mut crate::bindings::types::Rules_t {
+            std::ptr::null_mut()
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_rules_add_file(
+            _: *mut crate::bindings::types::Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_rules_add(
+            _: *mut crate::bindings::types::Rules_t,
+            _: *const std::os::raw::c_char,
+            _: *mut *const std::os::raw::c_char,
+        ) -> std::os::raw::c_int {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_rules_cleanup(
+            _: *mut crate::bindings::types::Rules_t,
+        ) -> std::os::raw::c_int {
+            0
+        }
+
+        #[cfg(miri)]
+        unsafe fn msc_rules_dump(_: *mut crate::bindings::types::Rules_t) {}
+
+        unsafe fn msc_process_logging(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_process_connection(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _client: *const std::os::raw::c_char,
+            _c_port: i32,
+            _server: *const std::os::raw::c_char,
+            _s_port: i32,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_process_uri(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _uri: *const std::os::raw::c_char,
+            _protocol: *const std::os::raw::c_char,
+            _http_version: *const std::os::raw::c_char,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_append_request_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _body: *const std::os::raw::c_uchar,
+            _size: usize,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_append_response_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _body: *const std::os::raw::c_uchar,
+            _size: usize,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_process_request_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_process_response_body(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_process_request_headers(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_process_response_headers(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _code: i32,
+            _protocol: *const std::os::raw::c_char,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_add_request_header(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _key: *const std::os::raw::c_uchar,
+            _value: *const std::os::raw::c_uchar,
+        ) -> i32 {
+            0
+        }
+
+        unsafe fn msc_add_response_header(
+            _transaction: *mut crate::bindings::types::Transaction_t,
+            _key: *const std::os::raw::c_uchar,
+            _value: *const std::os::raw::c_uchar,
+        ) -> i32 {
+            0
+        }
+    }
+
+    macro_rules! test_sys_failures {
+        ($($name:ident $($param:expr),* => $err:pat)*) => {
+            $(
+                paste::item! {
+                    #[test]
+                    fn [<test_ $name _failure>]() {
+                        let ms = ModSecurity::<FallibleBindings>::new();
+                        let rules = Rules::new();
+
+                        let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
+
+                        assert!(matches!(
+                            transaction.$name($($param),*),
+                            Err($err)
+                        ));
+                    }
+                }
+            )*
+        }
+    }
+
+    test_sys_failures! {
+        process_logging => ModSecurityError::ProcessLogging
+        process_connection "", 0, "", 0 => ModSecurityError::ProcessConnection
+        process_uri "", "", "" => ModSecurityError::ProcessUri
+        append_request_body b"" => ModSecurityError::AppendRequestBody
+        append_response_body b"" => ModSecurityError::AppendResponseBody
+        process_request_body => ModSecurityError::ProcessRequestBody
+        process_response_body => ModSecurityError::ProcessResponseBody
+        process_request_headers => ModSecurityError::ProcessRequestHeaders
+        process_response_headers 0, "" => ModSecurityError::ProcessResponseHeaders
+        add_request_header "", "" => ModSecurityError::AddRequestHeader
+        add_response_header "", "" => ModSecurityError::AddResponseHeader
     }
 }
