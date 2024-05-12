@@ -74,7 +74,7 @@ impl<'a, B: RawBindings> TransactionBuilder<'a, B> {
     }
 }
 
-type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
+pub type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
 
 pub struct Transaction<'a, B: RawBindings = Bindings> {
     inner: *mut Transaction_t,
@@ -1005,7 +1005,7 @@ mod tests {
                 paste::item! {
                     #[test]
                     fn [<test_ $name _failure>]() {
-                        let ms = ModSecurity::<FallibleBindings>::new();
+                        let ms = ModSecurity::<FallibleBindings>::default();
                         let rules = Rules::new();
 
                         let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();

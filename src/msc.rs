@@ -11,6 +11,7 @@ lazy_static! {
     static ref DESTROY: Mutex<()> = Mutex::new(());
 }
 
+/// Builds a ModSecurity instance with custom configuration.
 pub struct ModSecurityBuilder<B: RawBindings = Bindings> {
     msc: ModSecurity<B>,
 }
@@ -18,25 +19,35 @@ pub struct ModSecurityBuilder<B: RawBindings = Bindings> {
 impl<B: RawBindings> ModSecurityBuilder<B> {
     fn new() -> Self {
         Self {
-            msc: ModSecurity::new(),
+            msc: ModSecurity::default(),
         }
     }
 
+    /// Overrides information about the connector that is using the library.
+    ///
+    /// By default, the connector info is set to `rust-modsecurity vX.X.X`.
     pub fn with_connector_info(mut self, connector: &str) -> ModSecurityResult<Self> {
         self.msc.set_connector_info(connector)?;
         Ok(self)
     }
 
+    /// Enables log callbacks on the ModSecurity instance. The callbacks themselves are specified when
+    /// creating a [`crate::transaction::Transaction`].
     pub fn with_log_callbacks(mut self) -> Self {
         self.msc.enable_log_callbacks();
         self
     }
 
+    /// Creates the configured ModSecurity instance.
     pub fn build(self) -> ModSecurity<B> {
         self.msc
     }
 }
 
+/// A ModSecurity instance.
+///
+/// This is the main entry point to the ModSecurity library. It is used to create transactions and
+/// manage the library's configuration.
 pub struct ModSecurity<B: RawBindings = Bindings> {
     inner: *mut ModSecurity_t,
     _bindings: PhantomData<B>,
@@ -44,26 +55,59 @@ pub struct ModSecurity<B: RawBindings = Bindings> {
 
 impl<B: RawBindings> Default for ModSecurity<B> {
     fn default() -> Self {
-        Self::new()
+        let mut msc = ModSecurity::new();
+        msc.set_connector_info(concat!("rust-modsecurity v", env!("CARGO_PKG_VERSION")))
+            .expect("Failed to set connector info");
+        msc
     }
 }
 
 impl<B: RawBindings> ModSecurity<B> {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             inner: unsafe { B::msc_init() },
             _bindings: PhantomData,
         }
     }
 
+    /// Creates a new ModSecurity builder.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::ModSecurity;
+    ///
+    /// let ms = ModSecurity::builder().with_log_callbacks().build();
+    /// ```
     pub fn builder() -> ModSecurityBuilder<B> {
         ModSecurityBuilder::new()
     }
 
+    /// Creates a new transaction builder.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::default();
+    /// let rules = Rules::new();
+    /// let transaction = ms.transaction_builder().with_rules(&rules).build().expect("error building transaction");
+    /// ```
     pub fn transaction_builder(&self) -> TransactionBuilderWithoutRules<'_, B> {
         TransactionBuilderWithoutRules::new(self)
     }
 
+    /// Returns information about this ModSecurity version and platform.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::ModSecurity;
+    ///
+    /// let ms = ModSecurity::default();
+    /// println!("ModSecurity version: {}", ms.whoami());
+    /// ```
     pub fn whoami(&self) -> &str {
         unsafe {
             let raw = B::msc_who_am_i(self.inner());

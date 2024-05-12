@@ -4,12 +4,12 @@
 
 #![warn(missing_docs)]
 
-mod bindings;
-mod error;
-mod intervention;
-mod msc;
-mod rules;
-mod transaction;
+pub mod bindings;
+pub mod error;
+pub mod intervention;
+pub mod msc;
+pub mod rules;
+pub mod transaction;
 
 pub use error::ModSecurityError;
 pub use intervention::Intervention;
