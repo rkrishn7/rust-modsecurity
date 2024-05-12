@@ -9,7 +9,7 @@ description = "A high-level Rust interface to libmodsecurity"
 keywords = ["modsecurity", "security", "waf"]
 edition = "2021"
 
-include = ["../LICENSE-MIT", "../LICENSE-APACHE", "/README.md", "src/*.rs"]
+include = ["/LICENSE-MIT", "/LICENSE-APACHE", "/README.md", "src/*.rs"]
 
 [workspace]
 # Workspace inheritance has an impact on MSRV and breaks cargo-readme, which
