@@ -1,6 +1,38 @@
 //! A Rust-interface to the [ModSecurity](https://github.com/owasp-modsecurity/ModSecurity/) library.
 //!
 //! If you're looking for low-level FFI bindings to libmodsecurity, check out [modsecurity-sys](./modsecurity-sys/README.md).
+//!
+//! **NOTE**: This crate requires `libmodsecurity` >= 3.0.0 to be installed on your system.
+//!
+//! # Example
+//!
+//! Block requests with `admin` in the path
+//!
+//! ```
+//! use modsecurity::{ModSecurity, Rules, Transaction};
+//!
+//! let ms = ModSecurity::default();
+//!
+//! let mut rules = Rules::new();
+//! rules.add_plain(r#"
+//!     SecRuleEngine On
+//!
+//!     SecRule REQUEST_URI "@rx admin" "id:1,phase:1,deny,status:401"
+//! "#).expect("Failed to add rules");
+//!
+//! let mut transaction = ms
+//!     .transaction_builder()
+//!     .with_rules(&rules)
+//!     .build()
+//!     .expect("Error building transaction");
+//!
+//! transaction.process_uri("http://example.com/admin", "GET", "1.1").expect("Error processing URI");
+//! transaction.process_request_headers().expect("Error processing request headers");
+//!
+//! let intervention = transaction.intervention().expect("Expected intervention");
+//!
+//! assert_eq!(intervention.status(), 401);
+//! ```
 
 #![deny(missing_docs)]
 
