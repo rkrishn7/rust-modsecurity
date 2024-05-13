@@ -57,6 +57,9 @@ macro_rules! msc_add_rules_result {
     };
 }
 
+unsafe impl<B: RawBindings> Send for Rules<B> {}
+unsafe impl<B: RawBindings> Sync for Rules<B> {}
+
 impl<B: RawBindings> Rules<B> {
     /// Creates a new set of rules.
     pub fn new() -> Self {

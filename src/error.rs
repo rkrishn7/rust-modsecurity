@@ -1,5 +1,8 @@
 //! Error types for ModSecurity
 
+use core::fmt;
+use std::error::Error;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 /// Primary error type for ModSecurity
 pub enum ModSecurityError {
@@ -35,6 +38,39 @@ pub enum ModSecurityError {
     RulesAddPlain(String),
     /// Error when updating the status code
     UpdateStatusCode,
+}
+
+impl Error for ModSecurityError {}
+
+impl fmt::Display for ModSecurityError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ModSecurityError::Nul(err) => write!(f, "Nul error: {}", err),
+            ModSecurityError::ProcessConnection => write!(f, "Error processing connection"),
+            ModSecurityError::ProcessUri => write!(f, "Error processing URI"),
+            ModSecurityError::ProcessLogging => write!(f, "Error processing logging"),
+            ModSecurityError::ProcessRequestBody => write!(f, "Error processing request body"),
+            ModSecurityError::ProcessResponseBody => write!(f, "Error processing response body"),
+            ModSecurityError::ProcessRequestHeaders => {
+                write!(f, "Error processing request headers")
+            }
+            ModSecurityError::ProcessResponseHeaders => {
+                write!(f, "Error processing response headers")
+            }
+            ModSecurityError::AddRequestHeader => write!(f, "Error adding request header"),
+            ModSecurityError::AddResponseHeader => write!(f, "Error adding response header"),
+            ModSecurityError::AppendRequestBody => write!(f, "Error appending to request body"),
+            ModSecurityError::AppendResponseBody => write!(f, "Error appending to response body"),
+            ModSecurityError::Intervention => write!(f, "Error checking for intervention"),
+            ModSecurityError::RulesAddFile(err) => {
+                write!(f, "Error adding file to rule set: {}", err)
+            }
+            ModSecurityError::RulesAddPlain(err) => {
+                write!(f, "Error adding plain rules to rule set: {}", err)
+            }
+            ModSecurityError::UpdateStatusCode => write!(f, "Error updating status code"),
+        }
+    }
 }
 
 impl From<std::ffi::NulError> for ModSecurityError {
