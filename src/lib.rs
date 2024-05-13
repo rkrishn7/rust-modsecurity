@@ -7,7 +7,7 @@
 //! Block requests with `admin` in the path
 //!
 //! ```
-//! use modsecurity::{ModSecurity, Rules, Transaction};
+//! use modsecurity::{ModSecurity, Rules};
 //!
 //! let ms = ModSecurity::default();
 //!
