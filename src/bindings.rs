@@ -1,6 +1,6 @@
 use modsecurity_sys::{ModSecLogCb, ModSecurity, ModSecurityIntervention, RulesSet, Transaction};
 
-pub mod types {
+pub(crate) mod types {
     pub use modsecurity_sys::{ModSecurityIntervention_t, ModSecurity_t, Rules_t, Transaction_t};
 }
 

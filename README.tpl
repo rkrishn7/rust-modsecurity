@@ -1,6 +1,6 @@
 # {{crate}}
 
-[![Crates.io](https://img.shields.io/crates/v/modsecurity.svg)](https://crates.io/crates/modsecurity) ![MSRV](https://img.shields.io/badge/msrv-1.58.1-orange) ![Check](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/check.yml/badge.svg) ![Safety](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/safety.yml/badge.svg) ![Test](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/test.yml/badge.svg) ![Contributions](https://img.shields.io/badge/contributions-welcome-green)
+[![Crates.io](https://img.shields.io/crates/v/modsecurity.svg)](https://crates.io/crates/modsecurity) ![MSRV](https://img.shields.io/badge/msrv-1.58.1-orange) ![Codecov](https://codecov.io/gh/rkrishn7/rust-modsecurity/graph/badge.svg?token=CO5ZQ1UVYJ) ![Check](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/check.yml/badge.svg) ![Safety](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/safety.yml/badge.svg) ![Test](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/test.yml/badge.svg) ![Contributions](https://img.shields.io/badge/contributions-welcome-green)
 
 
 {{readme}}

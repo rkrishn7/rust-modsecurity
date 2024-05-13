@@ -1,9 +1,9 @@
-use lazy_static::lazy_static;
+//! ModSecurity transaction API.
+
 use std::{
     ffi::CString,
     marker::PhantomData,
     os::raw::{c_char, c_uchar, c_void},
-    sync::Mutex,
 };
 
 use crate::{
@@ -18,10 +18,7 @@ use crate::{
     ModSecurityResult,
 };
 
-lazy_static! {
-    static ref DESTROY: Mutex<()> = Mutex::new(());
-}
-
+/// An intermediate builder for creating a [`TransactionBuilder`]
 pub struct TransactionBuilderWithoutRules<'a, B: RawBindings = Bindings> {
     ms: &'a ModSecurity<B>,
 }
@@ -31,11 +28,13 @@ impl<'a, B: RawBindings> TransactionBuilderWithoutRules<'a, B> {
         Self { ms }
     }
 
+    /// Creates a new transaction builder with the given rules.
     pub fn with_rules(self, rules: &'a Rules<B>) -> TransactionBuilder<'a, B> {
         TransactionBuilder::new(self.ms, rules)
     }
 }
 
+/// Builds a ModSecurity transaction with custom configuration.
 pub struct TransactionBuilder<'a, B: RawBindings = Bindings> {
     ms: &'a ModSecurity<B>,
     rules: &'a Rules<B>,
@@ -45,7 +44,7 @@ pub struct TransactionBuilder<'a, B: RawBindings = Bindings> {
 }
 
 impl<'a, B: RawBindings> TransactionBuilder<'a, B> {
-    pub(crate) fn new(ms: &'a ModSecurity<B>, rules: &'a Rules<B>) -> Self {
+    fn new(ms: &'a ModSecurity<B>, rules: &'a Rules<B>) -> Self {
         Self {
             ms,
             rules,
@@ -55,6 +54,24 @@ impl<'a, B: RawBindings> TransactionBuilder<'a, B> {
         }
     }
 
+    /// Sets a logging callback for the transaction that will be invoked for each generated
+    /// log message.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::builder().with_log_callbacks().build();
+    /// let rules = Rules::new();
+    ///
+    /// let transaction = ms.transaction_builder().with_rules(&rules).with_logging(|msg| {
+    ///     if let Some(msg) = msg {
+    ///         println!("Log: {}", msg);
+    ///     }
+    /// }).build().expect("error building transaction");
+    ///
+    /// ```
     pub fn with_logging<F>(mut self, log_cb: F) -> Self
     where
         F: Fn(Option<&str>) + Send + Sync + 'static,
@@ -63,19 +80,41 @@ impl<'a, B: RawBindings> TransactionBuilder<'a, B> {
         self
     }
 
+    /// Sets an explicit transaction ID.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::builder().with_log_callbacks().build();
+    /// let rules = Rules::new();
+    ///
+    /// let transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .with_id("some-unique-id")
+    ///     .build()
+    ///     .expect("error building transaction");
+    /// ```
     pub fn with_id(mut self, id: &'a str) -> Self {
         self.id = Some(id);
         self
     }
 
+    /// Creates the configured transaction.
     pub fn build(self) -> ModSecurityResult<Transaction<'a, B>> {
         let transaction = Transaction::new(self.ms, self.rules, self.id, self.log_cb);
         transaction
     }
 }
 
-type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
+/// The type of the logging callback that can be set on a [`Transaction`].
+pub type LogCallback = Box<dyn Fn(Option<&str>) + Send + Sync + 'static>;
 
+/// A ModSecurity transaction.
+///
+/// A transaction represents the inspection on an entire request and response cycle.
 pub struct Transaction<'a, B: RawBindings = Bindings> {
     inner: *mut Transaction_t,
     /// This field ensures that the lifetime of `Transaction` is tied to the `ModSecurity` and `Rules`
@@ -91,7 +130,6 @@ pub struct Transaction<'a, B: RawBindings = Bindings> {
 
 impl<B: RawBindings> Drop for Transaction<'_, B> {
     fn drop(&mut self) {
-        let _lock = DESTROY.lock().expect("Poisoned lock");
         unsafe {
             B::msc_transaction_cleanup(self.inner);
             if let Some(id) = self._id {
@@ -152,12 +190,90 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         })
     }
 
+    /// Processes rules in the logging phase for this transaction.
+    ///
+    /// At this point there is not need to hold the connection, the response can be
+    /// delivered prior to the execution of this method.
+    ///
+    /// **NOTE**: Remember to check for a possible intervention using [`Transaction::intervention()`]
+    /// after calling this method.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::builder().with_log_callbacks().build();
+    /// let mut rules = Rules::new();
+    ///
+    /// rules.add_plain(r#"
+    ///     SecRuleEngine On
+    ///
+    ///     SecRule REQUEST_URI "test" "phase:5,id:'2',t:none,log,deny,status:403,msg:'Access denied'"
+    /// "#).expect("Error adding rule set");
+    ///
+    /// let mut transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .with_logging(|msg| {
+    ///         if let Some(msg) = msg {
+    ///             println!("Log: {}", msg);
+    ///         }
+    ///     })
+    ///     .build()
+    ///     .expect("Error building transaction");
+    ///
+    /// transaction.process_uri("/test", "GET", "1.1").expect("Error processing URI");
+    /// transaction.process_logging().expect("Error processing logging");
+    ///
+    /// assert!(transaction.intervention().is_some());
+    /// ```
     pub fn process_logging(&mut self) -> ModSecurityResult<()> {
         let result = unsafe { B::msc_process_logging(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessLogging, ())
     }
 
+    /// Performs analysis on the connection.
+    ///
+    /// This method should be called at very beginning of a request process. It is
+    /// expected to be executed prior to the virtual host resolution, when the
+    /// connection arrives on the server.
+    ///
+    /// **NOTE**: Remember to check for a possible intervention using [`Transaction::intervention()`]
+    /// after calling this method.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::builder().with_log_callbacks().build();
+    /// let mut rules = Rules::new();
+    ///
+    /// rules.add_plain(r#"
+    ///     SecRuleEngine On
+    ///
+    ///     SecRule REMOTE_ADDR "@ipMatch 124.123.122.121" "id:35,phase:1,t:none,deny"
+    /// "#).expect("Error adding rule set");
+    ///
+    /// let mut transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .with_logging(|msg| {
+    ///         if let Some(msg) = msg {
+    ///             println!("Log: {}", msg);
+    ///         }
+    ///     })
+    ///     .build()
+    ///     .expect("Error building transaction");
+    ///
+    /// transaction.process_connection("124.123.122.121", 12345, "127.0.0.1", 80).expect("Error processing connection");
+    /// // The request headers must be received in order for rules in phase 1 to be processed
+    /// transaction.process_request_headers().expect("Error processing request headers");
+    ///
+    /// assert!(transaction.intervention().is_some());
+    /// ```
     pub fn process_connection(
         &mut self,
         client: &str,
@@ -175,6 +291,48 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         msc_result!(result, ModSecurityError::ProcessConnection, ())
     }
 
+    /// Perform the analysis on the URI and all the query string variables.
+    ///
+    /// This method should be called at very beginning of a request process. It is
+    /// expected to be executed prior to the virtual host resolution, when the
+    /// connection arrives on the server.
+    ///
+    /// There is no direct connection between this function and any phase of the SecLanguage's phases.
+    /// It is something that may occur between SecLanguage phases 1 and 2.
+    ///
+    /// **NOTE**: Remember to check for a possible intervention using [`Transaction::intervention()`]
+    /// after calling this method.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::builder().with_log_callbacks().build();
+    /// let mut rules = Rules::new();
+    ///
+    /// rules.add_plain(r#"
+    ///     SecRuleEngine On
+    ///
+    ///     SecRule REQUEST_URI "test" "phase:1,id:'2',t:none,log,deny,status:403,msg:'Access denied'"
+    /// "#).expect("Error adding rule set");
+    ///
+    /// let mut transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .with_logging(|msg| {
+    ///         if let Some(msg) = msg {
+    ///             println!("Log: {}", msg);
+    ///         }
+    ///     })
+    ///     .build()
+    ///     .expect("Error building transaction");
+    ///
+    /// transaction.process_uri("/test", "GET", "1.1").expect("Error processing URI");
+    /// transaction.process_request_headers().expect("Error processing request headers");
+    ///
+    /// assert!(transaction.intervention().is_some());
+    /// ```
     pub fn process_uri(
         &mut self,
         uri: &str,
@@ -197,36 +355,174 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         msc_result!(result, ModSecurityError::ProcessUri, ())
     }
 
+    /// Appends a request body to the transaction.
     pub fn append_request_body(&mut self, body: &[u8]) -> ModSecurityResult<()> {
         let result = unsafe { B::msc_append_request_body(self.inner, body.as_ptr(), body.len()) };
 
         msc_result!(result, ModSecurityError::AppendRequestBody, ())
     }
 
+    /// Appends a response body to the transaction.
     pub fn append_response_body(&mut self, body: &[u8]) -> ModSecurityResult<()> {
         let result = unsafe { B::msc_append_response_body(self.inner, body.as_ptr(), body.len()) };
 
         msc_result!(result, ModSecurityError::AppendResponseBody, ())
     }
 
+    /// Processes rules in the request body phase for this transaction.
+    ///
+    /// **NOTE**: Remember to check for a possible intervention using [`Transaction::intervention()`]
+    /// after calling this method.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::default();
+    /// let mut rules = Rules::new();
+    ///
+    /// rules.add_plain(r#"
+    ///    SecRuleEngine On
+    ///
+    ///    SecRule REQUEST_BODY "@rx test" "phase:2,id:'1',t:none,deny"
+    /// "#).expect("Error adding rule set");
+    ///
+    /// let mut transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .build()
+    ///     .expect("Error building transaction");
+    ///
+    /// transaction.append_request_body(b"test").expect("Error appending request body");
+    /// transaction.process_request_body().expect("Error processing request body");
+    ///
+    /// assert!(transaction.intervention().is_some());
+    /// ```
     pub fn process_request_body(&mut self) -> ModSecurityResult<()> {
         let result = unsafe { B::msc_process_request_body(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessRequestBody, ())
     }
 
+    /// Processes rules in the response body phase for this transaction.
+    ///
+    /// **NOTE**: Remember to check for a possible intervention using [`Transaction::intervention()`]
+    /// after calling this method.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::default();
+    /// let mut rules = Rules::new();
+    ///
+    /// rules.add_plain(r#"
+    ///    SecRuleEngine On
+    ///
+    ///    SecResponseBodyAccess On
+    ///
+    ///    SecRule RESPONSE_BODY "@rx test" "phase:4,id:'1',t:none,deny"
+    /// "#).expect("Error adding rule set");
+    ///
+    /// let mut transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .build()
+    ///     .expect("Error building transaction");
+    ///
+    /// transaction.append_response_body(b"test").expect("Error appending response body");
+    /// transaction.process_response_body().expect("Error processing response body");
+    ///
+    /// assert!(transaction.intervention().is_some());
+    /// ```
     pub fn process_response_body(&mut self) -> ModSecurityResult<()> {
         let result = unsafe { B::msc_process_response_body(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessResponseBody, ())
     }
 
+    /// Processes rules in the request headers phase for this transaction.
+    ///
+    /// The request headers should be added using [`Transaction::add_request_header()`] before calling this method.
+    ///
+    /// **NOTE**: Remember to check for a possible intervention using [`Transaction::intervention()`]
+    /// after calling this method.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::default();
+    /// let mut rules = Rules::new();
+    ///
+    /// rules.add_plain(r#"
+    ///    SecRuleEngine On
+    ///
+    ///    SecRule REQUEST_HEADERS:X-Client-Port "@streq 22" \
+    ///        "id:'1',\
+    ///        phase:1,\
+    ///        t:none,\
+    ///        status:403,\
+    ///        deny
+    /// "#).expect("Error adding rule set");
+    ///
+    /// let mut transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .build()
+    ///     .expect("Error building transaction");
+    ///
+    /// transaction.add_request_header("X-Client-Port", "22").expect("Error adding request header");
+    /// transaction.process_request_headers().expect("Error processing request headers");
+    ///
+    /// assert!(transaction.intervention().is_some());
+    /// ```
     pub fn process_request_headers(&mut self) -> ModSecurityResult<()> {
         let result = unsafe { B::msc_process_request_headers(self.inner) };
 
         msc_result!(result, ModSecurityError::ProcessRequestHeaders, ())
     }
 
+    /// Processes rules in the response headers phase for this transaction.
+    ///
+    /// The response headers should be added using [`Transaction::add_response_header()`] before calling this method.
+    ///
+    /// **NOTE**: Remember to check for a possible intervention using [`Transaction::intervention()`]
+    /// after calling this method.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::default();
+    /// let mut rules = Rules::new();
+    ///
+    /// rules.add_plain(r#"
+    ///    SecRuleEngine On
+    ///
+    ///    SecRule RESPONSE_HEADERS:X-Secret-Key "@streq leaked-secret-key" \
+    ///        "id:'1',\
+    ///        phase:3,\
+    ///        t:none,\
+    ///        status:403,\
+    ///        deny
+    /// "#).expect("Error adding rule set");
+    ///
+    /// let mut transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .build()
+    ///     .expect("Error building transaction");
+    ///
+    /// transaction.add_response_header("X-Secret-Key", "leaked-secret-key").expect("Error adding response header");
+    /// transaction.process_response_headers(200, "HTTP 1.2").expect("Error processing response headers");
+    ///
+    /// assert!(transaction.intervention().is_some());
+    /// ```
     pub fn process_response_headers(&mut self, code: i32, protocol: &str) -> ModSecurityResult<()> {
         let protocol = CString::new(protocol)?;
 
@@ -236,6 +532,7 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         msc_result!(result, ModSecurityError::ProcessResponseHeaders, ())
     }
 
+    /// Adds a request header to the transaction.
     pub fn add_request_header(&mut self, key: &str, value: &str) -> ModSecurityResult<()> {
         let key = CString::new(key)?;
         let value = CString::new(value)?;
@@ -251,6 +548,7 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         msc_result!(result, ModSecurityError::AddRequestHeader, ())
     }
 
+    /// Adds a response header to the transaction.
     pub fn add_response_header(&mut self, key: &str, value: &str) -> ModSecurityResult<()> {
         let key = CString::new(key)?;
         let value = CString::new(value)?;
@@ -266,6 +564,37 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         msc_result!(result, ModSecurityError::AddResponseHeader, ())
     }
 
+    /// Returns an intervention if one is triggered by the transaction.
+    ///
+    /// An intervention is triggered when a rule is matched and the corresponding action is disruptive.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use modsecurity::{ModSecurity, Rules};
+    ///
+    /// let ms = ModSecurity::default();
+    /// let mut rules = Rules::new();
+    ///
+    /// rules.add_plain(r#"
+    ///     SecRuleEngine On
+    ///
+    ///     SecRule REQUEST_URI "test" "phase:1,id:'2',t:none,log,deny,status:403,msg:'Access denied'"
+    /// "#).expect("Error adding rule set");
+    ///
+    /// let mut transaction = ms
+    ///     .transaction_builder()
+    ///     .with_rules(&rules)
+    ///     .build()
+    ///     .expect("Error building transaction");
+    ///
+    /// transaction.process_uri("/test", "GET", "1.1").expect("Error processing URI");
+    /// transaction.process_request_headers().expect("Error processing request headers");
+    ///
+    /// let intervention = transaction.intervention().expect("Expected intervention");
+    ///
+    /// assert_eq!(intervention.status(), 403);
+    /// assert!(intervention.log().is_some());
     pub fn intervention(&mut self) -> Option<Intervention> {
         let mut intervention = ModSecurityIntervention_t {
             status: 200,
@@ -286,10 +615,12 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         }
     }
 
+    /// Returns the length of the request body.
     pub fn get_request_body_length(&mut self) -> usize {
         unsafe { B::msc_get_request_body_length(self.inner) }
     }
 
+    /// Returns the length of the response body.
     pub fn get_response_body_length(&mut self) -> usize {
         unsafe { B::msc_get_response_body_length(self.inner) }
     }
@@ -1005,7 +1336,7 @@ mod tests {
                 paste::item! {
                     #[test]
                     fn [<test_ $name _failure>]() {
-                        let ms = ModSecurity::<FallibleBindings>::new();
+                        let ms = ModSecurity::<FallibleBindings>::default();
                         let rules = Rules::new();
 
                         let mut transaction = ms.transaction_builder().with_rules(&rules).build().unwrap();
