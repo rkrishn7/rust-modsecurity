@@ -75,6 +75,7 @@ jobs:
             cat Cargo.toml
             # Update lsan-suppressions.txt
             echo "leak:ibxml2.so.2" > lsan-suppressions.txt
+            echo "leak:libcrypto.so.3" >> lsan-suppressions.txt
       - name: cargo test -Zsanitizer=address
         # Only --lib --tests b/c of https://github.com/rust-lang/rust/issues/53945
         run: cargo test --lib --tests --all-features --target x86_64-unknown-linux-gnu
