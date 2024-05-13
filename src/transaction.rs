@@ -128,6 +128,9 @@ pub struct Transaction<'a, B: RawBindings = Bindings> {
     _id: Option<*mut c_char>,
 }
 
+unsafe impl Send for Transaction<'_, Bindings> {}
+unsafe impl Sync for Transaction<'_, Bindings> {}
+
 impl<B: RawBindings> Drop for Transaction<'_, B> {
     fn drop(&mut self) {
         unsafe {

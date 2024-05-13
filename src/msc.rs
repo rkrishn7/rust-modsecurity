@@ -76,6 +76,9 @@ impl<B: RawBindings> Default for ModSecurity<B> {
     }
 }
 
+unsafe impl<B: RawBindings> Send for ModSecurity<B> {}
+unsafe impl<B: RawBindings> Sync for ModSecurity<B> {}
+
 impl<B: RawBindings> ModSecurity<B> {
     fn new() -> Self {
         Self {
