@@ -1,6 +1,6 @@
 [package]
 name = "modsecurity"
-version = "0.1.1-alpha.2"
+version = "0.1.1-alpha.3"
 authors = ["Rohan Krishnaswamy <rohan@fastmail.us>"]
 repository = "https://github.com/rkrishn7/rust-modsecurity"
 readme = "README.md"
@@ -18,7 +18,7 @@ include = ["/LICENSE-MIT", "/LICENSE-APACHE", "/README.md", "src/*.rs"]
 # ref(cargo-readme): https://github.com/webern/cargo-readme/issues/81
 
 [dependencies]
-modsecurity-sys = { path = "modsecurity-sys", version = "0.1.1-alpha.2" }
+modsecurity-sys = { path = "modsecurity-sys", version = "0.1.1-alpha.3" }
 lazy_static = "1.4.0"
 
 [dev-dependencies]
