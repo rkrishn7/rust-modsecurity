@@ -12,7 +12,7 @@ If you're looking for low-level FFI bindings to libmodsecurity, check out [modse
 Block requests with `admin` in the path
 
 ```rust
-use modsecurity::{ModSecurity, Rules, Transaction};
+use modsecurity::{ModSecurity, Rules};
 
 let ms = ModSecurity::default();
 
