@@ -2,8 +2,6 @@
 //!
 //! If you're looking for low-level FFI bindings to libmodsecurity, check out [modsecurity-sys](./modsecurity-sys/README.md).
 //!
-//! **NOTE**: This crate requires `libmodsecurity` >= 3.0.0 to be installed on your system.
-//!
 //! # Example
 //!
 //! Block requests with `admin` in the path
@@ -33,6 +31,18 @@
 //!
 //! assert_eq!(intervention.status(), 401);
 //! ```
+//!
+//! More examples can be found in the [examples](./examples) directory.
+//!
+//! # Documentation
+//!
+//! Information regarding the ModSecurity language can be found in the [ModSecurity Reference Manual](https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v3.x)).
+//!
+//! Documentation for this crate can be found on [docs.rs](https://docs.rs/modsecurity).
+//!
+//! # Requirements
+//!
+//! This crate requires `libmodsecurity` >= 3.0.9 to be installed on your system.
 
 #![deny(missing_docs)]
 

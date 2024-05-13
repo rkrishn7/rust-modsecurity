@@ -12,6 +12,11 @@ use crate::{
 };
 
 lazy_static! {
+    /// We use a mutex to serialize rule parsing and cleanup across threads. This is because
+    /// the underlying ModSecurity library is not thread-safe in this area as it relies on a
+    /// non-reentrant parser.
+    ///
+    /// More information on this can be found [here](https://github.com/owasp-modsecurity/ModSecurity/issues/3138)
     static ref RULES: Mutex<()> = Mutex::new(());
 }
 
@@ -21,6 +26,7 @@ lazy_static! {
 ///
 /// This type uses a `Mutex` to serialize certain operations - specifically rule parsing and cleanup.
 /// This is because the underlying ModSecurity library does not appear to be thread-safe in these areas.
+/// More information on this can be found [here](https://github.com/owasp-modsecurity/ModSecurity/issues/3138).
 ///
 /// Because of this, is recommended to create a single instance of [`Rules`] and share it across multiple [`crate::transaction::Transaction`]s.
 pub struct Rules<B: RawBindings = Bindings> {
@@ -71,8 +77,8 @@ impl<B: RawBindings> Rules<B> {
     /// rules.add_file("/path/to/rules.conf").expect("Failed to add rules from file");
     /// ```
     pub fn add_file<P: AsRef<Path>>(&mut self, file: P) -> ModSecurityResult<()> {
-        // SAFETY: Parallel testing uncovered that parsing a file is not thread-safe. So we
-        // serialize the calls to this function across instances.
+        // SAFETY: Parsing is not thread-safe. So we serialize the calls
+        // to this function across instances.
         let _lock: std::sync::MutexGuard<()> = RULES.lock().expect("Poisoned lock");
 
         let file = CString::new(file.as_ref().to_str().expect("Invalid file path"))?;
@@ -94,8 +100,8 @@ impl<B: RawBindings> Rules<B> {
     /// rules.add_plain("SecRuleEngine On\n").expect("Failed to add rules");
     /// ```
     pub fn add_plain(&mut self, plain_rules: &str) -> ModSecurityResult<()> {
-        // SAFETY: Parallel testing uncovered that parsing a file is not thread-safe. So we
-        // serialize the calls to this function across instances.
+        // SAFETY: Parsing is not thread-safe. So we serialize the calls
+        // to this function across instances.
         let _lock = RULES.lock().expect("Poisoned lock");
 
         let plain_rules = CString::new(plain_rules)?;
@@ -120,6 +126,7 @@ impl<B: RawBindings> Rules<B> {
 
 impl<B: RawBindings> Drop for Rules<B> {
     fn drop(&mut self) {
+        // SAFETY: State associated with parsing is not thread-safe.
         let _lock = RULES.lock().expect("Poisoned lock");
         unsafe {
             B::msc_rules_cleanup(self.inner);

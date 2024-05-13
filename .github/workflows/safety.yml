@@ -139,7 +139,8 @@ jobs:
           toolchain: ${{ env.NIGHTLY }}
           components: miri
       - name: cargo miri test
-        run: cargo miri test
+        # Use --all-targets so we don't run doc tests under miri
+        run: cargo miri test --all-targets
         env:
           MIRIFLAGS: "-Zmiri-disable-isolation"
           PKG_CONFIG_PATH: /usr/local/modsecurity/lib/pkgconfig

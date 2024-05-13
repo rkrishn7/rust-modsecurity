@@ -1,13 +1,11 @@
 # modsecurity
 
-[![Crates.io](https://img.shields.io/crates/v/modsecurity.svg)](https://crates.io/crates/modsecurity) ![MSRV](https://img.shields.io/badge/msrv-1.58.1-orange) ![Check](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/check.yml/badge.svg) ![Safety](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/safety.yml/badge.svg) ![Test](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/test.yml/badge.svg) ![Contributions](https://img.shields.io/badge/contributions-welcome-green)
+[![Crates.io](https://img.shields.io/crates/v/modsecurity.svg)](https://crates.io/crates/modsecurity) ![MSRV](https://img.shields.io/badge/msrv-1.58.1-orange) ![Codecov](https://codecov.io/gh/rkrishn7/rust-modsecurity/graph/badge.svg?token=CO5ZQ1UVYJ) ![Check](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/check.yml/badge.svg) ![Safety](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/safety.yml/badge.svg) ![Test](https://github.com/rkrishn7/rust-modsecurity/actions/workflows/test.yml/badge.svg) ![Contributions](https://img.shields.io/badge/contributions-welcome-green)
 
 
 A Rust-interface to the [ModSecurity](https://github.com/owasp-modsecurity/ModSecurity/) library.
 
 If you're looking for low-level FFI bindings to libmodsecurity, check out [modsecurity-sys](./modsecurity-sys/README.md).
-
-**NOTE**: This crate requires `libmodsecurity` >= 3.0.0 to be installed on your system.
 
 ## Example
 
@@ -38,6 +36,18 @@ let intervention = transaction.intervention().expect("Expected intervention");
 
 assert_eq!(intervention.status(), 401);
 ```
+
+More examples can be found in the [examples](./examples) directory.
+
+## Documentation
+
+Information regarding the ModSecurity language can be found in the [ModSecurity Reference Manual](https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v3.x)).
+
+Documentation for this crate can be found on [docs.rs](https://docs.rs/modsecurity).
+
+## Requirements
+
+This crate requires `libmodsecurity` >= 3.0.9 to be installed on your system.
 
 ## License
 

@@ -1,17 +1,11 @@
 //! ModSecurity instance and builder.
 
-use lazy_static::lazy_static;
-use std::sync::Mutex;
 use std::{ffi::CStr, marker::PhantomData};
 
 use crate::bindings::{types::ModSecurity_t, Bindings, RawBindings};
 
 use crate::transaction::TransactionBuilderWithoutRules;
 use crate::ModSecurityResult;
-
-lazy_static! {
-    static ref MSC: Mutex<()> = Mutex::new(());
-}
 
 /// Builds a ModSecurity instance with custom configuration.
 pub struct ModSecurityBuilder<B: RawBindings = Bindings> {
@@ -50,13 +44,6 @@ impl<B: RawBindings> ModSecurityBuilder<B> {
 ///
 /// This is the main entry point to the ModSecurity library. It is used to create transactions and
 /// manage the library's configuration.
-///
-/// ### Considerations
-///
-/// This type uses a `Mutex` to serialize drops as the underlying ModSecurity library does not appear to be thread-safe in this area.
-///
-/// Because of this, it is recommended to create a single instance of [`ModSecurity`] during a program. In almost all cases, only one instance
-/// should be needed.
 pub struct ModSecurity<B: RawBindings = Bindings> {
     inner: *mut ModSecurity_t,
     _bindings: PhantomData<B>,
@@ -164,7 +151,6 @@ impl<B: RawBindings> ModSecurity<B> {
 
 impl<B: RawBindings> Drop for ModSecurity<B> {
     fn drop(&mut self) {
-        let _lock = MSC.lock().expect("Poisoned lock");
         unsafe {
             B::msc_cleanup(self.inner);
         }
