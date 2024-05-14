@@ -86,7 +86,7 @@ impl<B: RawBindings> Rules<B> {
 
         let file = CString::new(file.as_ref().to_str().expect("Invalid file path"))?;
 
-        let mut error: *const i8 = std::ptr::null();
+        let mut error: *const c_char = std::ptr::null();
         let result = unsafe { B::msc_rules_add_file(self.inner, file.as_ptr(), &mut error) };
 
         msc_add_rules_result!(result, error, crate::ModSecurityError::RulesAddFile)
@@ -109,7 +109,7 @@ impl<B: RawBindings> Rules<B> {
 
         let plain_rules = CString::new(plain_rules)?;
 
-        let mut error: *const i8 = std::ptr::null();
+        let mut error: *const c_char = std::ptr::null();
         let result = unsafe { B::msc_rules_add(self.inner, plain_rules.as_ptr(), &mut error) };
 
         msc_add_rules_result!(result, error, crate::ModSecurityError::RulesAddPlain)
