@@ -1,6 +1,6 @@
 [package]
 name = "modsecurity"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Rohan Krishnaswamy <rohan@fastmail.us>"]
 repository = "https://github.com/rkrishn7/rust-modsecurity"
 readme = "README.md"
