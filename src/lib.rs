@@ -42,7 +42,7 @@
 //!
 //! # Requirements
 //!
-//! This crate requires `libmodsecurity` >= 3.0.9 to be installed on your system.
+//! This crate requires `libmodsecurity` >= 3.0.6 to be installed on your system.
 
 #![deny(missing_docs)]
 
