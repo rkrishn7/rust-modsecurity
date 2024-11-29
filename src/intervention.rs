@@ -7,7 +7,6 @@ use std::{
 };
 
 /// Represents an intervention from ModSecurity.
-#[derive(Clone)]
 pub struct Intervention {
     pub(crate) inner: ModSecurityIntervention_t,
 }
