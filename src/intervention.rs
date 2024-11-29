@@ -9,6 +9,9 @@ pub struct Intervention<B: RawBindings = Bindings> {
     _bindings: PhantomData<B>,
 }
 
+unsafe impl Send for Intervention {}
+unsafe impl Sync for Intervention {}
+
 impl<B: RawBindings> Debug for Intervention<B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Intervention")
