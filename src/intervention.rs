@@ -1,17 +1,15 @@
 //! Intervention related types and methods.
 
-use crate::bindings::types::ModSecurityIntervention_t;
-use std::{
-    ffi::{CStr, CString},
-    fmt::Debug,
-};
+use crate::bindings::{types::ModSecurityIntervention_t, Bindings, RawBindings};
+use std::{ffi::CStr, fmt::Debug, marker::PhantomData};
 
 /// Represents an intervention from ModSecurity.
-pub struct Intervention {
+pub struct Intervention<B: RawBindings = Bindings> {
     pub(crate) inner: ModSecurityIntervention_t,
+    _bindings: PhantomData<B>,
 }
 
-impl Debug for Intervention {
+impl<B: RawBindings> Debug for Intervention<B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Intervention")
             .field("status", &self.status())
@@ -23,7 +21,13 @@ impl Debug for Intervention {
     }
 }
 
-impl Intervention {
+impl<B: RawBindings> Intervention<B> {
+    pub(crate) fn new(inner: ModSecurityIntervention_t) -> Self {
+        Self {
+            inner,
+            _bindings: PhantomData,
+        }
+    }
     /// Returns the status code of the intervention.
     pub fn status(&self) -> i32 {
         self.inner.status
@@ -58,16 +62,10 @@ impl Intervention {
     }
 }
 
-impl Drop for Intervention {
+impl<B: RawBindings> Drop for Intervention<B> {
     fn drop(&mut self) {
         unsafe {
-            if !self.inner.url.is_null() {
-                let _ = CString::from_raw(self.inner.url);
-            }
-
-            if !self.inner.log.is_null() {
-                let _ = CString::from_raw(self.inner.log);
-            }
+            B::msc_intervention_cleanup(&mut self.inner as *mut ModSecurityIntervention_t);
         }
     }
 }

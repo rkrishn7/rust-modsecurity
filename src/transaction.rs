@@ -610,9 +610,7 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         let result = unsafe { B::msc_intervention(self.inner, &mut intervention) };
 
         if result > 0 {
-            Some(Intervention {
-                inner: intervention,
-            })
+            Some(Intervention::new(intervention))
         } else {
             None
         }
