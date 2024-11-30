@@ -1,6 +1,7 @@
 //! ModSecurity rules.
 
 use lazy_static::lazy_static;
+use std::ffi::CStr;
 use std::sync::Mutex;
 use std::{ffi::CString, marker::PhantomData, os::raw::c_char, path::Path};
 
@@ -46,8 +47,9 @@ macro_rules! msc_add_rules_result {
             let error = if $error.is_null() {
                 "Unknown error".to_string()
             } else {
-                let raw_err_msg = unsafe { CString::from_raw($error as *mut c_char) };
-                raw_err_msg.to_string_lossy().into_owned()
+                let err = unsafe { CStr::from_ptr($error).to_string_lossy().into_owned() };
+                unsafe { B::msc_rules_error_cleanup($error) };
+                err
             };
 
             Err($error_ty(error))
