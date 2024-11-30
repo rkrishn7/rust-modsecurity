@@ -645,6 +645,11 @@ mod tests {
         ) {
         }
 
+        unsafe fn msc_intervention_cleanup(
+            it: *mut crate::bindings::types::ModSecurityIntervention_t,
+        ) {
+        }
+
         unsafe fn msc_intervention(
             _transaction: *mut crate::bindings::types::Transaction_t,
             _intervention: *mut crate::bindings::types::ModSecurityIntervention_t,
@@ -1148,6 +1153,11 @@ mod tests {
         #[cfg(miri)]
         unsafe fn msc_transaction_cleanup(
             _transaction: *mut crate::bindings::types::Transaction_t,
+        ) {
+        }
+
+        unsafe fn msc_intervention_cleanup(
+            it: *mut crate::bindings::types::ModSecurityIntervention_t,
         ) {
         }
 
