@@ -598,7 +598,7 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
     ///
     /// assert_eq!(intervention.status(), 403);
     /// assert!(intervention.log().is_some());
-    pub fn intervention(&mut self) -> Option<Intervention> {
+    pub fn intervention(&mut self) -> Option<Intervention<B>> {
         let mut intervention = ModSecurityIntervention_t {
             status: 200,
             pause: 0,
@@ -610,7 +610,7 @@ impl<'a, B: RawBindings> Transaction<'a, B> {
         let result = unsafe { B::msc_intervention(self.inner, &mut intervention) };
 
         if result > 0 {
-            Some(Intervention::new(intervention))
+            Some(Intervention::<B>::new(intervention))
         } else {
             None
         }
@@ -646,7 +646,7 @@ mod tests {
         }
 
         unsafe fn msc_intervention_cleanup(
-            it: *mut crate::bindings::types::ModSecurityIntervention_t,
+            _it: *mut crate::bindings::types::ModSecurityIntervention_t,
         ) {
         }
 
@@ -1157,7 +1157,7 @@ mod tests {
         }
 
         unsafe fn msc_intervention_cleanup(
-            it: *mut crate::bindings::types::ModSecurityIntervention_t,
+            _it: *mut crate::bindings::types::ModSecurityIntervention_t,
         ) {
         }
 
