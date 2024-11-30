@@ -101,6 +101,8 @@ pub trait RawBindings {
             it: *mut ModSecurityIntervention
         ) -> ::std::os::raw::c_int;
 
+        unsafe fn msc_intervention_cleanup(it: *mut ModSecurityIntervention);
+
         unsafe fn msc_process_logging(transaction: *mut Transaction) -> ::std::os::raw::c_int;
 
         unsafe fn msc_init() -> *mut ModSecurity;
@@ -128,6 +130,8 @@ pub trait RawBindings {
             plain_rules: *const ::std::os::raw::c_char,
             error: *mut *const ::std::os::raw::c_char
         ) -> ::std::os::raw::c_int;
+
+        unsafe fn msc_rules_error_cleanup(error: *const ::std::os::raw::c_char);
 
         unsafe fn msc_rules_cleanup(rules: *mut RulesSet) -> ::std::os::raw::c_int;
     }
