@@ -47,7 +47,7 @@ Documentation for this crate can be found on [docs.rs](https://docs.rs/modsecuri
 
 ## Requirements
 
-This crate requires `libmodsecurity` >= 3.0.6 to be installed on your system.
+This crate requires `libmodsecurity` >= 3.0.13 to be installed on your system.
 
 ## License
 
