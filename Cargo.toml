@@ -18,7 +18,7 @@ include = ["/LICENSE-MIT", "/LICENSE-APACHE", "/README.md", "src/*.rs"]
 # ref(cargo-readme): https://github.com/webern/cargo-readme/issues/81
 
 [dependencies]
-modsecurity-sys = { path = "modsecurity-sys", version = "0.1.2" }
+modsecurity-sys = { path = "modsecurity-sys", version = "1.0.0" }
 lazy_static = "1.4.0"
 
 [dev-dependencies]
